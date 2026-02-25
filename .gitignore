@@ -1,0 +1,32 @@
+# Visual Studio
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.ide
+
+# Build
+bin/
+obj/
+**/bin/
+**/obj/
+
+# Rider
+.idea/
+
+# EF Core Migrations (optionnel)
+Migrations/
+
+# Publish
+publish/
+
+# User secrets
+secrets.json
+
+# Logs
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
