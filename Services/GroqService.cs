@@ -14,66 +14,52 @@ public class GroqService
         _http = factory.CreateClient();
     }
 
-    public async Task<string> GeneratePostAsync(string prompt, string? jsonDocument = null)
+    public async Task<string> GeneratePostAsync(string prompt, string? jsonContent)
     {
-        var apiKey = _config["Groq:ApiKey"];
+        string finalPrompt = prompt;
 
-        if (string.IsNullOrWhiteSpace(apiKey))
-            throw new Exception("Groq API Key is missing in appsettings.json");
-
-        string ragContext = "";
-
-        if (!string.IsNullOrWhiteSpace(jsonDocument))
+        // ✅ JSON optionnel
+        if (!string.IsNullOrWhiteSpace(jsonContent))
         {
-            ragContext = $"Campaign JSON Context:\n{jsonDocument}\n\n";
+            finalPrompt += $"\n\nAdditional Data:\n{jsonContent}";
         }
 
-        var finalPrompt = $@"
-You are a senior marketing AI.
+        var apiKey = _config["Groq:ApiKey"];
+        if (string.IsNullOrEmpty(apiKey))
+            throw new Exception("Groq API Key not configured.");
 
-{ragContext}
+        _http.DefaultRequestHeaders.Clear();
+        _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
-User request:
-{prompt}
-
-Generate:
-- Instagram post
-- LinkedIn post
-Add CTA + hook + emojis.
-";
-
-        var payload = new
+        var requestBody = new
         {
             model = "llama-3.3-70b-versatile",
             messages = new[]
             {
-                new { role = "system", content = "You are an expert marketing copywriter." },
                 new { role = "user", content = finalPrompt }
-            },
-            temperature = 0.7
+            }
         };
 
-        var request = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
+        var json = JsonSerializer.Serialize(requestBody);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        request.Headers.Add("Authorization", $"Bearer {apiKey}");
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(payload),
-            Encoding.UTF8,
-            "application/json"
-        );
-
-        var response = await _http.SendAsync(request);
-        var responseBody = await response.Content.ReadAsStringAsync();
+        var response = await _http.PostAsync("https://api.groq.com/openai/v1/chat/completions", content);
 
         if (!response.IsSuccessStatusCode)
-            throw new Exception($"Groq API error: {response.StatusCode} - {responseBody}");
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Groq API Error: {error}");
+        }
 
-        using var doc = JsonDocument.Parse(responseBody);
+        var responseString = await response.Content.ReadAsStringAsync();
 
-        return doc.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString() ?? "No content generated.";
+        using var doc = JsonDocument.Parse(responseString);
+        var result = doc.RootElement
+                        .GetProperty("choices")[0]
+                        .GetProperty("message")
+                        .GetProperty("content")
+                        .GetString();
+
+        return result ?? "No content generated.";
     }
 }

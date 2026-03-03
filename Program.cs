@@ -17,6 +17,7 @@ builder.Services.AddScoped<OtpService>();
 builder.Services.AddScoped<EmailService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<GroqService>();
+builder.Services.AddScoped<ImageService>();
 
 // ================= JWT AUTH =================
 builder.Services.AddAuthentication("Bearer")
