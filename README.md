@@ -1,92 +1,238 @@
-# AutoPost API
+markdown# 🤖 AutoGenerate — AI-Powered Social Media Post Generator
 
-API .NET 8 pour la gestion de l'authentification et des OTP. Fournit des contrôleurs exposés via Swagger. La configuration se fait via `appsettings.json`.
-
----
-
-## Prérequis
-
-- .NET 8 SDK  
-- SQL Server ou LocalDB accessible depuis votre machine  
-- Outil EF CLI (optionnel mais recommandé) : `dotnet-ef`  
-- Visual Studio 2026 (optionnel)
+AutoGenerate is a full-stack web application that allows users to generate AI-powered social media posts using a prompt or a JSON file, and publish them across multiple platforms.
 
 ---
 
-## Installation des dépendances
+## 🚀 Tech Stack
 
-Depuis le dossier racine du projet :
+### Frontend
+- **React** + **TypeScript** (TSX)
+- **Vite** — build tool
+- **Tailwind CSS** — styling
+- **React Router DOM** — navigation
+- **Framer Motion** — animations
+- **Axios** — HTTP client
+- **JWT Decode** — token decoding
+- **React Icons** + **Lucide React** — icons
 
+### Backend
+- **.NET 8** — ASP.NET Core Web API
+- **Entity Framework Core** — ORM
+- **SQL Server** — database
+- **JWT Authentication** — secure auth
+- **Groq AI** — text generation
+- **HuggingFace API** — image generation
+- **SMTP** — email OTP service
+
+---
+
+## 📁 Project Structure
+```
+AutoGenerate/
+├── Backend/                        # .NET Web API
+│   ├── Controllers/
+│   │   ├── AuthController.cs
+│   │   └── AiController.cs
+│   ├── Services/
+│   │   ├── JwtService.cs
+│   │   ├── OtpService.cs
+│   │   ├── EmailService.cs
+│   │   ├── GroqService.cs
+│   │   └── ImageService.cs
+│   ├── Data/
+│   │   └── AppDbContext.cs
+│   ├── Dtos/
+│   └── appsettings.json
+│
+└── Frontend/                       # React TSX App
+    └── src/
+        ├── assets/                 # CSS files
+        ├── components/
+        │   ├── NavigationBar/
+        │   │   └── NavBar.tsx
+        │   ├── Sections/
+        │   │   ├── AboutUs.tsx
+        │   │   ├── Contact.tsx
+        │   │   └── GeneratePost.tsx
+        │   └── Footer/
+        │       └── Footer.tsx
+        ├── hooks/
+        │   ├── AuthContext.tsx
+        │   ├── ThemeContext.tsx
+        │   ├── useAuth.ts
+        │   └── useScroll.ts
+        ├── pages/
+        │   ├── Home.tsx
+        │   ├── Auth.tsx
+        │   ├── VerifyOtp.tsx
+        │   └── Dashboard.tsx
+        ├── router/
+        │   ├── AppRouter.tsx
+        │   └── ProtectedRoute.tsx
+        ├── services/
+        │   └── api.ts
+        ├── store/
+        │   └── store.ts
+        └── Redux/
+            └── slices/
+                └── authSlice.ts
+```
+
+---
+
+## ⚙️ Getting Started
+
+### Prerequisites
+- Node.js >= 18
+- .NET 8 SDK
+- SQL Server
+- HuggingFace API Key
+- Groq API Key
+
+---
+
+### 🖥️ Backend Setup
+
+**1. Clone the repo**
 ```bash
-dotnet restore
-Configuration
+git clone https://github.com/amira-02/Auto_Generate.git
+cd Auto_Generate/Backend
+```
 
-Fichier de configuration : appsettings.json
-
-Chaîne de connexion attendue : ConnectionStrings:DefaultConnection
-
-Exemple pour LocalDB (Windows, dev)
+**2. Configure `appsettings.json`**
+```json
 {
-  "ConnectionStrings": {
-    "DefaultConnection": "Server=(localdb)\\MSSQLLocalDB;Database=AutoPostDb;Trusted_Connection=True;"
+  "Jwt": {
+    "Key": "YOUR_SECRET_KEY",
+    "Issuer": "AutoGenerateApi",
+    "Audience": "AutoGenerateClient"
   },
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft.AspNetCore": "Warning"
-    }
-  },
-  "AllowedHosts": "*"
-}
-Exemple pour SQL Server Express
-{
   "ConnectionStrings": {
-    "DefaultConnection": "Server=localhost\\SQLEXPRESS;Database=AutoPostDb;Trusted_Connection=True;"
+    "DefaultConnection": "Your SQL Server connection string"
+  },
+  "Groq": {
+    "ApiKey": "your_groq_api_key"
+  },
+  "HuggingFace": {
+    "ApiKey": "your_huggingface_api_key"
   }
 }
-Exemple pour SQL Server distant (SQL Auth)
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Server=your-server-address;Database=AutoPostDb;User Id=your-user;Password=your-password;"
-  }
-}
-Création de la base de données (migrations EF Core)
+```
 
-Créer la migration initiale :
-
-dotnet ef migrations add InitialCreate
-
-Appliquer la migration et créer la base de données :
-
+**3. Apply migrations and run**
+```bash
 dotnet ef database update
-
-Remarques :
-
-Exécuter ces commandes depuis le répertoire contenant le .csproj, ou utiliser les options --project et --startup-project.
-
-Pour LocalDB, assurez-vous qu'elle est démarrée :
-
-sqllocaldb i
-sqllocaldb start MSSQLLocalDB
-Exécution du projet
-
-Visual Studio 2026 : F5 (ou Ctrl+F5) — choisissez le profil https ou http.
-
-CLI :
-
 dotnet run
-Accès à Swagger
+```
 
-Une fois le projet lancé, Swagger est accessible via :
+API runs on: `https://localhost:7079`
 
-https://localhost:<port>/swagger
+---
 
-où <port> correspond au port configuré dans launchSettings.json.
+### 🌐 Frontend Setup
 
-Notes supplémentaires
+**1. Navigate to Frontend**
+```bash
+cd Auto_Generate/Frontend
+```
 
-Assurez-vous que vos tables sont créées avant d’essayer d’utiliser les endpoints d’authentification.
+**2. Install dependencies**
+```bash
+npm install
+```
 
-Pour tester les OTP, utilisez Swagger ou un client HTTP comme Postman.
+**3. Start the dev server**
+```bash
+npm run dev
+```
 
-Les migrations EF Core permettent de mettre à jour facilement la base si vous ajoutez des entités ou modifiez le modèle.
+App runs on: `http://localhost:5173`
+
+---
+
+## 🔐 Authentication Flow
+```
+Register → OTP sent to email → Verify OTP → JWT token → Access Dashboard
+Login    → JWT token         → Access Dashboard
+```
+
+- JWT stored in `localStorage`
+- Role-based access (`Editor`, `Admin`)
+- Protected routes redirect to `/auth` if not authenticated
+
+---
+
+## ✨ Features
+
+- 🔐 **Auth** — Register, Login, OTP Email Verification
+- 🤖 **AI Post Generation** — Generate posts from a prompt or JSON file
+- 🖼️ **AI Image Generation** — Generate images via HuggingFace Stable Diffusion
+- 📊 **Dashboard** — View stats, recent posts, platform breakdown, activity chart
+- 🌙 **Dark / Light Mode** — Global theme toggle persisted across all pages
+- 📱 **Responsive** — Works on desktop and mobile
+- 🚀 **Protected Routes** — Dashboard only accessible when authenticated
+
+---
+
+## 🌍 API Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/api/auth/register` | Register new user | ❌ |
+| POST | `/api/auth/login` | Login user | ❌ |
+| POST | `/api/auth/verify-otp` | Verify OTP code | ❌ |
+| POST | `/api/auth/resend-otp` | Resend OTP | ❌ |
+| POST | `/api/ai/generate` | Generate post text | ✅ |
+| POST | `/api/ai/generate-image` | Generate image | ✅ |
+
+---
+
+## 🎨 Theme System
+
+The app uses a global `ThemeContext` for dark/light mode:
+```tsx
+import { useTheme } from "../hooks/ThemeContext";
+
+const { t, isDark, toggleTheme } = useTheme();
+
+// Use t.bg, t.text, t.card, t.border etc. for consistent theming
+```
+
+---
+
+## 📦 Environment Variables
+
+Create a `.env` file in `Frontend/` if needed:
+```env
+VITE_API_URL=https://localhost:7079/api
+```
+
+And update `services/api.ts`:
+```ts
+const API = axios.create({
+  baseURL: import.meta.env.VITE_API_URL,
+});
+```
+
+---
+
+## 🤝 Contributing
+
+1. Fork the project
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+## 👩‍💻 Author
+
+**Amira** — [@amira-02](https://github.com/amira-02)
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.

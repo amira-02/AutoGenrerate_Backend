@@ -2,6 +2,7 @@
 using System.Security.Claims;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
+using AutoPost.Api.Models; // ✅ AJOUTE ÇA
 
 namespace AutoPost.Api.Services
 {
