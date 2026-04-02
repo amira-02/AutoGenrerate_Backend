@@ -1,8 +1,8 @@
-namespace AutoPost.Api.DTOs
-{
-    public class LoginDto
+    namespace AutoPost.Api.DTOs
     {
-        public string Email { get; set; } = null!;
-        public string Password { get; set; } = null!;
+        public class LoginDto
+        {
+            public string Email { get; set; } = null!;
+            public string Password { get; set; } = null!;
+        }
     }
-}
