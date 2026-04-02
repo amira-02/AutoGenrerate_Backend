@@ -4,6 +4,7 @@ using AutoPost.Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Collections.Concurrent;
 using System.Security.Claims;
 
 [ApiController]
@@ -14,6 +15,9 @@ public class PostsController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _config;
+
+    // ← Dictionnaire qui garde les "promesses" en attente
+    private static readonly ConcurrentDictionary<int, TaskCompletionSource<Post>> _pending = new();
 
     public PostsController(AppDbContext db, IHttpClientFactory httpClientFactory, IConfiguration config)
     {
@@ -29,11 +33,9 @@ public class PostsController : ControllerBase
                  ?? User.FindFirst("email")?.Value;
 
         if (email == null) return null;
-
         return await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
     }
 
-    // Convertit Post → DTO simple sans boucle infinie
     private PostResponseDto ToDto(Post post) => new PostResponseDto
     {
         Id = post.Id,
@@ -65,6 +67,10 @@ public class PostsController : ControllerBase
         _db.Posts.Add(post);
         await _db.SaveChangesAsync();
 
+        // ← Crée une "promesse" pour ce post
+        var tcs = new TaskCompletionSource<Post>();
+        _pending[post.Id] = tcs;
+
         var client = _httpClientFactory.CreateClient();
         var n8nUrl = _config["N8n:WebhookUrl"];
         var baseUrl = _config["App:BaseUrl"];
@@ -77,9 +83,19 @@ public class PostsController : ControllerBase
             callbackUrl = $"{baseUrl}/api/posts/{post.Id}/result"
         });
 
-        return Ok(ToDto(post));
+        // ← Attend que n8n appelle /result (max 60 secondes)
+        var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(60)));
+
+        _pending.TryRemove(post.Id, out _);
+
+        if (completedTask != tcs.Task)
+            return StatusCode(504, new { message = "n8n took too long to respond" });
+
+        var updatedPost = tcs.Task.Result;
+        return Ok(ToDto(updatedPost));
     }
 
+    // ← n8n appelle ce endpoint → débloque la promesse
     [HttpPut("{id}/result")]
     [AllowAnonymous]
     public async Task<IActionResult> SaveResult(int id, [FromBody] PostResultDto dto)
@@ -92,6 +108,10 @@ public class PostsController : ControllerBase
         post.Status = "PENDING_APPROVAL";
 
         await _db.SaveChangesAsync();
+
+        // ← Débloque la promesse → le POST répond au frontend avec la caption
+        if (_pending.TryGetValue(id, out var tcs))
+            tcs.SetResult(post);
 
         return Ok(ToDto(post));
     }
@@ -106,7 +126,6 @@ public class PostsController : ControllerBase
             .FirstOrDefaultAsync(p => p.Id == id && p.UserId == user.Id);
 
         if (post == null) return NotFound(new { message = $"Post {id} not found" });
-
         return Ok(ToDto(post));
     }
 
@@ -134,10 +153,8 @@ public class PostsController : ControllerBase
             .FirstOrDefaultAsync(p => p.Id == id && p.UserId == user.Id);
 
         if (post == null) return NotFound(new { message = $"Post {id} not found" });
-
         post.Status = "DRAFT";
         await _db.SaveChangesAsync();
-
         return Ok(ToDto(post));
     }
 
@@ -151,10 +168,8 @@ public class PostsController : ControllerBase
             .FirstOrDefaultAsync(p => p.Id == id && p.UserId == user.Id);
 
         if (post == null) return NotFound(new { message = $"Post {id} not found" });
-
         post.Status = "APPROVED";
         await _db.SaveChangesAsync();
-
         return Ok(ToDto(post));
     }
 
@@ -168,11 +183,9 @@ public class PostsController : ControllerBase
             .FirstOrDefaultAsync(p => p.Id == id && p.UserId == user.Id);
 
         if (post == null) return NotFound(new { message = $"Post {id} not found" });
-
         post.Status = "SCHEDULED";
         post.ScheduledDate = dto.ScheduledAt;
         await _db.SaveChangesAsync();
-
         return Ok(ToDto(post));
     }
 }
