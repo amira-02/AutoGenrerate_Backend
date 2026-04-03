@@ -1,12 +1,17 @@
 ﻿
 namespace AutoPost.Api.DTOs
 {
-    public class CreatePostDto
-    {
-        public string Topic { get; set; } = string.Empty;
-        public string Hashtags { get; set; } = string.Empty;
+    
+        public class CreatePostDto
+        {
+            public string Topic { get; set; } = "";
+            public string Hashtags { get; set; } = "";
+
+            public string ToneOfVoice { get; set; } = "";
+            public string CaptionLength { get; set; } = "";
     }
 }
+
 
 
 

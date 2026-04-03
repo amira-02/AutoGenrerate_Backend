@@ -1,5 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿//using AutoGenerate.Models;
 using AutoPost.Api.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace AutoPost.Api.Data;
 
@@ -11,6 +12,8 @@ public class AppDbContext : DbContext
     public DbSet<OtpCode> OtpCodes { get; set; }
     public DbSet<Post> Posts { get; set; }
     public DbSet<SocialAccount> SocialAccounts { get; set; }
+
+    public DbSet<Caption> Captions { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -32,5 +35,11 @@ public class AppDbContext : DbContext
             .WithMany(u => u.SocialAccounts)
             .HasForeignKey(s => s.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Caption>()
+    .HasOne(c => c.Post)
+    .WithMany(p => p.Captions)
+    .HasForeignKey(c => c.PostId)
+    .OnDelete(DeleteBehavior.Cascade);
     }
 }
