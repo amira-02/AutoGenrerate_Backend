@@ -18,6 +18,8 @@
 //    // Navigation
 //    public User User { get; set; } = null!;
 //}
+
+
 namespace AutoPost.Api.Models;
 
 public class Post
