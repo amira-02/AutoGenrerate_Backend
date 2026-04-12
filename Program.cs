@@ -1,9 +1,9 @@
-using AutoPost.Api.Services;
-using AutoPost.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.OpenApi.Models;
+using AutoGenerate.Auth;
+using AutoGenerate.Shared.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
