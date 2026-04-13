@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="SujetService\Sujet.cs" />
+    <None Include="TopicService\TopicController.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -21,6 +21,10 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.16.0" />
     <PackageReference Include="System.Net.Http.Json" Version="10.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="CaptionService\Dto\" />
   </ItemGroup>
 
 </Project>

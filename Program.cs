@@ -126,9 +126,10 @@ app.UseHttpsRedirection();
 // ⚠️ ORDER IMPORTANT
 app.UseCors("AllowFrontend");
 
+app.UseStaticFiles();   // ← doit être AVANT UseRouting
+app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 
 app.Run();
