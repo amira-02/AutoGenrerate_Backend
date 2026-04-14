@@ -79,7 +79,7 @@ public class PostsController : ControllerBase
         var client = new HttpClient();
 
         var response = await client.PostAsJsonAsync(
-            "http://localhost:5678/webhook-test/chatbot",
+            "http://localhost:5678/webhook/chatbot",
             new
             {
                 message = dto.Message ?? "",

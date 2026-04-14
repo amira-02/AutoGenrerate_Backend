@@ -37,7 +37,12 @@ public class AppDbContext : DbContext
             .HasForeignKey(p => p.TopicId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        modelBuilder.Entity<AutoGenerate.CaptionService.Models.Caption>()  // ← nom complet
+        // ✅ ADD THIS (IMPORTANT)
+        modelBuilder.Entity<Post>()
+            .Property(p => p.Status)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<AutoGenerate.CaptionService.Models.Caption>()
             .HasOne(c => c.Post)
             .WithMany(p => p.Captions)
             .HasForeignKey(c => c.PostId)
@@ -55,4 +60,8 @@ public class AppDbContext : DbContext
             .HasForeignKey(s => s.UserId)
             .OnDelete(DeleteBehavior.Cascade);
     }
+
+
+
+
 }

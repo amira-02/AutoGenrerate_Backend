@@ -181,54 +181,40 @@ public class ImageController : ControllerBase
             var apiKey = _config["HuggingFace:ApiKey"];
             client.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-
-            // ✅ Ajouter le header Accept pour forcer image binaire
             client.DefaultRequestHeaders.Add("Accept", "image/png");
 
-            var url = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell";
-
-            var hfResponse = await client.PostAsJsonAsync(url, new { inputs = prompt });
-
-            var contentType = hfResponse.Content.Headers.ContentType?.MediaType;
+            var hfUrl = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell";
+            var hfResponse = await client.PostAsJsonAsync(hfUrl, new { inputs = prompt });
+            var contentType = hfResponse.Content.Headers.ContentType?.MediaType ?? "image/png";
 
             if (!hfResponse.IsSuccessStatusCode)
             {
-                // ✅ Lire UNE SEULE FOIS pour le message d'erreur
                 var errorBody = await hfResponse.Content.ReadAsStringAsync();
                 return StatusCode(502, new { message = "HuggingFace error", details = errorBody });
             }
 
-            if (contentType != null && contentType.Contains("application/json"))
+            if (contentType.Contains("application/json"))
             {
                 var jsonBody = await hfResponse.Content.ReadAsStringAsync();
                 return StatusCode(502, new { message = "HF returned JSON instead of image", details = jsonBody });
             }
 
-            // ✅ Lire les bytes UNE SEULE FOIS (pas de ReadAsStringAsync avant)
+            // ✅ Lire UNE SEULE FOIS
             var imageBytes = await hfResponse.Content.ReadAsByteArrayAsync();
 
             if (imageBytes == null || imageBytes.Length == 0)
-                return StatusCode(500, new { message = "Empty image returned from HuggingFace" });
+                return StatusCode(500, new { message = "Empty image returned" });
 
-            var webRoot = _env.WebRootPath
-                ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
-
-            var folder = Path.Combine(webRoot, "uploads", "generated");
-            Directory.CreateDirectory(folder);
-
-            var fileName = $"{Guid.NewGuid()}.png";
-            var filePath = Path.Combine(folder, fileName);
-
-            await System.IO.File.WriteAllBytesAsync(filePath, imageBytes);
-
-            var imageUrl = $"/uploads/generated/{fileName}";
+            // ✅ Stocker en base64 dans la colonne Url existante — pas de migration
+            var base64 = Convert.ToBase64String(imageBytes);
+            var dataUrl = $"data:{contentType};base64,{base64}";
 
             var existing = post.Images.Where(i => i.Source == ImageSource.Generated).ToList();
             _db.PostImages.RemoveRange(existing);
 
             post.Images.Add(new Image
             {
-                Url = imageUrl,
+                Url = dataUrl,   // ← data:image/png;base64,xxx dans la colonne Url
                 Source = ImageSource.Generated,
                 AltText = dto.Prompt ?? caption,
                 Order = 0
@@ -236,7 +222,7 @@ public class ImageController : ControllerBase
 
             await _db.SaveChangesAsync();
 
-            return Ok(new { message = "Image generated successfully", url = imageUrl });
+            return Ok(new { message = "Image generated successfully", url = dataUrl });
         }
         catch (Exception ex)
         {
