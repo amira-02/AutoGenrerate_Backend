@@ -1,6 +1,6 @@
 ﻿using AutoGenerate.Shared.Models;
 
-//namespace AutoGenerate.SocialMedia;
+namespace AutoGenerate.SocialMedia;
 
 public class SocialAccount
 {

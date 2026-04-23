@@ -108,6 +108,11 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+app.Urls.Add("http://0.0.0.0:5220");
+app.Urls.Add("https://0.0.0.0:7079");
+
+
+
 // ================= MIDDLEWARE =================
 if (app.Environment.IsDevelopment())
 {

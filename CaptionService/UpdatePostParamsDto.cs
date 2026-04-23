@@ -9,5 +9,6 @@ namespace AutoGenerate.CaptionService.Models  // ← change ici
         public string? Tone { get; set; }
         public string? Hashtags { get; set; }
         public List<string>? Platforms { get; set; }
+        public string? Status { get; set; }
     }
 }
