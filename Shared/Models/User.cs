@@ -1,4 +1,4 @@
-using AutoGenerate.SocialMedia;
+
 using System.ComponentModel.DataAnnotations;
 
 namespace AutoGenerate.Shared.Models;

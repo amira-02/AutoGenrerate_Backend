@@ -1,5 +1,5 @@
 ﻿using AutoGenerate.Auth;
-using AutoGenerate.SocialMedia;
+//using AutoGenerate.SocialMedia;
 using AutoGenerate.Shared.Models;
 using Microsoft.EntityFrameworkCore;
 
