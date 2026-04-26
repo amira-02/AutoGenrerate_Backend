@@ -14,10 +14,7 @@ public class AccountsController : ControllerBase
 {
     private readonly AppDbContext _db;
 
-    public AccountsController(AppDbContext db)
-    {
-        _db = db;
-    }
+    public AccountsController(AppDbContext db) => _db = db;
 
     private async Task<User?> GetCurrentUserAsync()
     {
@@ -36,14 +33,16 @@ public class AccountsController : ControllerBase
 
         var accounts = await _db.SocialAccounts
             .Where(a => a.UserId == user.Id)
-            .Select(a => new
-            {
+            .Select(a => new {
                 a.Id,
                 a.Platform,
                 a.Username,
                 a.ProfilePicture,
                 a.FollowersCount,
+                a.IsConnected,
                 a.ConnectedAt,
+                a.AccountId,
+                hasToken = !string.IsNullOrEmpty(a.AccessToken),
             })
             .ToListAsync();
 
@@ -65,6 +64,7 @@ public class AccountsController : ControllerBase
             existing.AccessToken = dto.AccessToken;
             existing.AccountId = dto.AccountId;
             existing.Username = dto.Username;
+            existing.IsConnected = true;
             existing.ConnectedAt = DateTime.UtcNow;
         }
         else
@@ -76,6 +76,7 @@ public class AccountsController : ControllerBase
                 AccessToken = dto.AccessToken,
                 AccountId = dto.AccountId,
                 Username = dto.Username,
+                IsConnected = true,
                 ConnectedAt = DateTime.UtcNow,
             });
         }

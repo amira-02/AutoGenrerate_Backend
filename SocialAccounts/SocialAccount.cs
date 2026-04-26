@@ -6,10 +6,12 @@ public class SocialAccount
     public int UserId { get; set; }
     public string Platform { get; set; } = "";
     public string AccessToken { get; set; } = "";
+    public string? RefreshToken { get; set; }
     public string? AccountId { get; set; }
     public string? Username { get; set; }
     public string? ProfilePicture { get; set; }
     public int? FollowersCount { get; set; }
+    public bool IsConnected { get; set; } = true;
     public DateTime ConnectedAt { get; set; } = DateTime.UtcNow;
 
     public User User { get; set; } = null!;
