@@ -101,4 +101,40 @@ public class AccountsController : ControllerBase
         await _db.SaveChangesAsync();
         return Ok(new { message = "Account disconnected" });
     }
+
+    // GET /api/accounts/tokens — pour n8n (sans [Authorize])
+    [HttpGet("tokens")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetTokens()
+    {
+        var accounts = await _db.SocialAccounts
+            .Where(s => s.IsConnected)
+            .Select(s => new {
+                s.Id,
+                s.Platform,
+                s.AccessToken,
+                s.RefreshToken,
+                s.AccountId,
+                s.Username
+            })
+            .ToListAsync();
+        return Ok(accounts);
+    }
+
+    // PATCH /api/accounts/tokens/{id} — pour n8n (sans [Authorize])
+    [HttpPatch("tokens/{id}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> UpdateToken(int id, [FromBody] UpdateTokenDto dto)
+    {
+        var account = await _db.SocialAccounts.FindAsync(id);
+        if (account == null) return NotFound();
+
+        account.AccessToken = dto.AccessToken;
+        if (dto.RefreshToken != null) account.RefreshToken = dto.RefreshToken;
+        account.ConnectedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync();
+        return Ok(new { message = "Token updated" });
+    }
+
 }

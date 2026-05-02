@@ -1,5 +1,4 @@
 ﻿using AutoGenerate.CaptionService.Models;
-using AutoGenerate.Shared.Models;
 
 namespace AutoGenerate.Shared.Models;
 
@@ -20,6 +19,13 @@ public class Post
     // Navigation
     public User? User { get; set; }
     public Topic? Topic { get; set; }
-    public List<CaptionService.Models.Caption> Captions { get; set; } = new();  // ← nom complet pour éviter l'ambiguïté
-    public List<Image> Images { get; set; } = new();
+    public List<CaptionService.Models.Caption> Captions { get; set; } = new();
+
+    // ✅ One PostImage row per post containing ["url1","url2","url3"]
+    public PostImage? Media { get; set; }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    public List<string> GetMediaUrls() => Media?.GetUrls() ?? new();
+    public string? FirstMediaUrl() => Media?.FirstUrl();
 }

@@ -39,17 +39,17 @@ public class ImageController : ControllerBase
         return await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
     }
 
-    // ── Helpers Cloudinary ────────────────────────────────────────────────────
+    // ── Cloudinary helpers ────────────────────────────────────────────────────
 
     private async Task<string> UploadBytesAsync(byte[] bytes, string fileName)
     {
-        using var stream = new MemoryStream(bytes);
+        using var ms = new MemoryStream(bytes);
         var result = await _cloudinary.UploadAsync(new ImageUploadParams
         {
-            File = new FileDescription(fileName, stream),
+            File = new FileDescription(fileName, ms),
             PublicId = $"autogenerate/posts/{Guid.NewGuid()}",
             Overwrite = true,
-            Transformation = new Transformation().Quality("auto").FetchFormat("auto")
+            Transformation = new Transformation().Quality("auto").FetchFormat("auto"),
         });
         if (result.Error != null) throw new Exception(result.Error.Message);
         return result.SecureUrl.ToString();
@@ -57,13 +57,15 @@ public class ImageController : ControllerBase
 
     private async Task<string> UploadFormFileAsync(IFormFile file)
     {
-        using var stream = file.OpenReadStream();
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        ms.Position = 0;
         var result = await _cloudinary.UploadAsync(new ImageUploadParams
         {
-            File = new FileDescription(file.FileName, stream),
+            File = new FileDescription(file.FileName, ms),
             PublicId = $"autogenerate/posts/{Guid.NewGuid()}",
             Overwrite = true,
-            Transformation = new Transformation().Quality("auto").FetchFormat("auto")
+            Transformation = new Transformation().Quality("auto").FetchFormat("auto"),
         });
         if (result.Error != null) throw new Exception(result.Error.Message);
         return result.SecureUrl.ToString();
@@ -79,13 +81,13 @@ public class ImageController : ControllerBase
             if (uploadIdx < 0) return;
             var afterUpload = segments.Skip(uploadIdx + 1).ToArray();
             var start = afterUpload[0].StartsWith("v") ? 1 : 0;
-            var publicIdWithExt = string.Join("/", afterUpload.Skip(start));
-            var publicId = Path.GetFileNameWithoutExtension(publicIdWithExt);
+            var publicIdExt = string.Join("/", afterUpload.Skip(start));
+            var publicId = Path.GetFileNameWithoutExtension(publicIdExt);
             var folder = string.Join("/", afterUpload.Skip(start).Take(afterUpload.Length - start - 1));
             var fullPublicId = string.IsNullOrEmpty(folder) ? publicId : $"{folder}/{publicId}";
             await _cloudinary.DestroyAsync(new DeletionParams(fullPublicId));
         }
-        catch { /* Ignore */ }
+        catch { /* ignore */ }
     }
 
     private async Task<string> GenerateImageFromHuggingFace(string prompt, string? style)
@@ -97,16 +99,16 @@ public class ImageController : ControllerBase
             ["watercolor"] = "watercolor painting, soft brush strokes",
             ["cinematic"] = "cinematic lighting, dramatic film look",
             ["minimalist"] = "minimalist, clean composition",
-            ["oil-painting"] = "oil painting style, textured canvas"
+            ["oil-painting"] = "oil painting style, textured canvas",
         };
         var styleHint = styleMap.GetValueOrDefault(style ?? "realistic");
         var fullPrompt = $"{prompt}. Style: {styleHint}.";
 
-        using var httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
-        httpClient.DefaultRequestHeaders.Authorization =
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
+        http.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _config["HuggingFace:ApiKey"]);
 
-        var hfResponse = await httpClient.PostAsJsonAsync(
+        var hfResponse = await http.PostAsJsonAsync(
             "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
             new { inputs = fullPrompt });
 
@@ -123,13 +125,20 @@ public class ImageController : ControllerBase
         return await UploadBytesAsync(bytes, "generated.png");
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    // ROUTES sans postId  →  /api/images/...
-    // Utilisées par NewPostModal AVANT la création du post
-    // ═════════════════════════════════════════════════════════════════════════
+    // ── Helper: get or create PostImage for a post ────────────────────────────
 
-    // POST /api/images/generate
-    // Génère une image et renvoie l'URL Cloudinary — aucun post créé
+    private async Task<PostImage> GetOrCreateMedia(Post post)
+    {
+        if (post.Media != null) return post.Media;
+
+        var media = new PostImage { PostId = post.Id };
+        _db.PostImages.Add(media);
+        post.Media = media;
+        return media;
+    }
+
+    // ── POST /api/images/generate ─────────────────────────────────────────────
+
     [HttpPost("/api/images/generate")]
     public async Task<IActionResult> GenerateOnly([FromBody] GenerateImageDto dto)
     {
@@ -146,99 +155,127 @@ public class ImageController : ControllerBase
         }
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    // ROUTES avec postId  →  /api/posts/{postId}/images/...
-    // Utilisées quand le post existe déjà
-    // ═════════════════════════════════════════════════════════════════════════
+    // ── POST /api/images/upload-temp ──────────────────────────────────────────
 
-    // GET /api/posts/{postId}/images
+    [HttpPost("/api/images/upload-temp")]
+    public async Task<IActionResult> UploadTemp(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest(new { message = "No file provided" });
+
+        try
+        {
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms);
+            ms.Position = 0;
+
+            string url;
+            if (file.ContentType.StartsWith("video/"))
+            {
+                var result = await _cloudinary.UploadAsync(new VideoUploadParams
+                {
+                    File = new FileDescription(file.FileName, ms),
+                    Folder = "autogenerate/videos",
+                });
+                if (result.Error != null)
+                    return StatusCode(500, new { message = result.Error.Message });
+                url = result.SecureUrl.ToString();
+            }
+            else
+            {
+                var result = await _cloudinary.UploadAsync(new ImageUploadParams
+                {
+                    File = new FileDescription(file.FileName, ms),
+                    Folder = "autogenerate/posts",
+                    Transformation = new Transformation().Quality("auto").FetchFormat("auto"),
+                });
+                if (result.Error != null)
+                    return StatusCode(500, new { message = result.Error.Message });
+                url = result.SecureUrl.ToString();
+            }
+
+            return Ok(new { url });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message });
+        }
+    }
+
+    // ── GET /api/posts/{postId}/images ────────────────────────────────────────
+
     [HttpGet("/api/posts/{postId}/images")]
     public async Task<IActionResult> GetImages(int postId)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
 
-        var post = await _db.Posts.Include(p => p.Images)
+        var post = await _db.Posts
+            .Include(p => p.Media)
             .FirstOrDefaultAsync(p => p.Id == postId && p.UserId == user.Id);
         if (post == null) return NotFound();
 
-        return Ok(post.Images.OrderBy(i => i.Order).Select(i => new
-        {
-            id = i.Id,
-            url = i.Url,
-            source = i.Source.ToString().ToLower(),
-            altText = i.AltText,
-            order = i.Order
-        }));
+        return Ok(post.Media?.GetUrls() ?? new List<string>());
     }
 
-    // POST /api/posts/{postId}/images/upload
+    // ── POST /api/posts/{postId}/images/upload ────────────────────────────────
+
     [HttpPost("/api/posts/{postId}/images/upload")]
     public async Task<IActionResult> UploadImage(int postId, IFormFile file)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
 
-        var post = await _db.Posts.Include(p => p.Images)
+        var post = await _db.Posts
+            .Include(p => p.Media)
             .FirstOrDefaultAsync(p => p.Id == postId && p.UserId == user.Id);
         if (post == null) return NotFound();
         if (file == null || file.Length == 0) return BadRequest(new { message = "No file provided" });
 
-        var allowed = new[] { "image/jpeg", "image/png", "image/webp", "image/gif" };
-        if (!allowed.Contains(file.ContentType.ToLower()))
-            return BadRequest(new { message = "Invalid file type" });
-
         var imageUrl = await UploadFormFileAsync(file);
+        var media = await GetOrCreateMedia(post);
+        var urls = media.GetUrls();
+        urls.Add(imageUrl);
+        media.SetUrls(urls);
 
-        var old = post.Images.Where(i => i.Source == ImageSource.Upload).ToList();
-        foreach (var img in old) await DeleteFromCloudinaryAsync(img.Url);
-        _db.PostImages.RemoveRange(old);
-
-        post.Images.Add(new Image { Url = imageUrl, Source = ImageSource.Upload, AltText = file.FileName, Order = 0 });
         await _db.SaveChangesAsync();
         return Ok(new { message = "Image uploaded", url = imageUrl });
     }
 
-    // POST /api/posts/{postId}/images/url
-    // Reçoit une URL Cloudinary (déjà uploadée) ou base64 → sauvegarde en DB
+    // ── POST /api/posts/{postId}/images/url ──────────────────────────────────
+
     [HttpPost("/api/posts/{postId}/images/url")]
     [AllowAnonymous]
     public async Task<IActionResult> SetImageUrl(int postId, [FromBody] SetImageUrlDto dto)
     {
-        var post = await _db.Posts.Include(p => p.Images)
+        var post = await _db.Posts
+            .Include(p => p.Media)
             .FirstOrDefaultAsync(p => p.Id == postId);
         if (post == null) return NotFound();
         if (string.IsNullOrWhiteSpace(dto.Url)) return BadRequest(new { message = "URL is required" });
 
         string finalUrl;
-
         if (dto.Url.StartsWith("data:image"))
         {
-            // base64 → Cloudinary (fallback, normalement plus utilisé)
-            var base64Data = dto.Url.Substring(dto.Url.IndexOf(',') + 1);
-            var bytes = Convert.FromBase64String(base64Data);
+            var bytes = Convert.FromBase64String(dto.Url.Substring(dto.Url.IndexOf(',') + 1));
             finalUrl = await UploadBytesAsync(bytes, "upload.png");
         }
         else if (dto.Url.StartsWith("http"))
-        {
-            // URL Cloudinary déjà uploadée → stocker directement
             finalUrl = dto.Url;
-        }
         else
-        {
             return BadRequest(new { message = "URL must be http(s) or data:image base64" });
-        }
 
-        var old = post.Images.Where(i => i.Source == ImageSource.Generated).ToList();
-        _db.PostImages.RemoveRange(old);
+        var media = await GetOrCreateMedia(post);
+        var urls = media.GetUrls();
+        if (!urls.Contains(finalUrl)) urls.Add(finalUrl);
+        media.SetUrls(urls);
 
-        post.Images.Add(new Image { Url = finalUrl, Source = ImageSource.Generated, AltText = dto.AltText ?? "", Order = 0 });
         await _db.SaveChangesAsync();
         return Ok(new { message = "Image saved", url = finalUrl });
     }
 
-    // POST /api/posts/{postId}/images/generate
-    // Génère + upload Cloudinary + associe directement au post
+    // ── POST /api/posts/{postId}/images/generate ──────────────────────────────
+
     [HttpPost("/api/posts/{postId}/images/generate")]
     public async Task<IActionResult> GenerateImage(int postId, [FromBody] GenerateImageDto dto)
     {
@@ -246,7 +283,9 @@ public class ImageController : ControllerBase
         if (user == null) return Unauthorized();
 
         var post = await _db.Posts
-            .Include(p => p.Topic).Include(p => p.Captions).Include(p => p.Images)
+            .Include(p => p.Topic)
+            .Include(p => p.Captions)
+            .Include(p => p.Media)
             .FirstOrDefaultAsync(p => p.Id == postId && p.UserId == user.Id);
         if (post == null) return NotFound();
 
@@ -256,11 +295,11 @@ public class ImageController : ControllerBase
             var prompt = $"{dto.Prompt ?? caption}. Topic: {post.Topic?.Name ?? ""}.";
             var imageUrl = await GenerateImageFromHuggingFace(prompt, dto.Style);
 
-            var old = post.Images.Where(i => i.Source == ImageSource.Generated).ToList();
-            foreach (var img in old) await DeleteFromCloudinaryAsync(img.Url);
-            _db.PostImages.RemoveRange(old);
+            var media = await GetOrCreateMedia(post);
+            var urls = media.GetUrls();
+            urls.Insert(0, imageUrl);
+            media.SetUrls(urls);
 
-            post.Images.Add(new Image { Url = imageUrl, Source = ImageSource.Generated, AltText = dto.Prompt ?? caption, Order = 0 });
             await _db.SaveChangesAsync();
             return Ok(new { message = "Image generated", url = imageUrl });
         }
@@ -270,23 +309,27 @@ public class ImageController : ControllerBase
         }
     }
 
-    // DELETE /api/posts/{postId}/images/{imageId}
-    [HttpDelete("/api/posts/{postId}/images/{imageId}")]
-    public async Task<IActionResult> DeleteImage(int postId, int imageId)
+    // ── DELETE /api/posts/{postId}/images ─────────────────────────────────────
+
+    [HttpDelete("/api/posts/{postId}/images")]
+    public async Task<IActionResult> DeleteImage(int postId, [FromQuery] string url)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
 
-        var post = await _db.Posts.Include(p => p.Images)
+        var post = await _db.Posts
+            .Include(p => p.Media)
             .FirstOrDefaultAsync(p => p.Id == postId && p.UserId == user.Id);
         if (post == null) return NotFound();
+        if (post.Media == null) return NotFound(new { message = "No media found" });
 
-        var image = post.Images.FirstOrDefault(i => i.Id == imageId);
-        if (image == null) return NotFound();
+        var urls = post.Media.GetUrls();
+        if (!urls.Remove(url)) return NotFound(new { message = "URL not found" });
 
-        await DeleteFromCloudinaryAsync(image.Url);
-        _db.PostImages.Remove(image);
+        post.Media.SetUrls(urls);
+        await DeleteFromCloudinaryAsync(url);
         await _db.SaveChangesAsync();
+
         return Ok(new { message = "Image deleted" });
     }
 }

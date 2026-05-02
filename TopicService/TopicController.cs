@@ -1,4 +1,4 @@
-﻿using AutoGenerate.Caption.Dto;  // ← ajoute cette ligne
+﻿using AutoGenerate.Caption.Dto;
 using AutoGenerate.Shared.Data;
 using AutoGenerate.Shared.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -58,40 +58,38 @@ public class TopicsController : ControllerBase
             .Include(t => t.Posts)
                 .ThenInclude(p => p.Captions)
             .Include(t => t.Posts)
-                .ThenInclude(p => p.Images)
-            .Select(t => new
+                .ThenInclude(p => p.Media)   // ✅ was p.Images
+            .FirstOrDefaultAsync();
+
+        if (topic == null) return NotFound();
+
+        return Ok(new
+        {
+            id = topic.Id,
+            name = topic.Name,
+            description = topic.Description,
+            platform = topic.Platform,
+            createdAt = topic.CreatedAt,
+            posts = topic.Posts.OrderByDescending(p => p.CreatedAt).Select(p =>
             {
-                id = t.Id,
-                name = t.Name,
-                description = t.Description,
-                platform = t.Platform,
-                createdAt = t.CreatedAt,
-                posts = t.Posts.OrderByDescending(p => p.CreatedAt).Select(p => new
+                var urls = p.Media?.GetUrls() ?? new List<string>();
+                return new
                 {
                     id = p.Id,
                     status = p.Status.ToString().ToLower(),
                     scheduledAt = p.ScheduledAt,
                     publishedAt = p.PublishedAt,
                     createdAt = p.CreatedAt,
-                    caption = p.Captions
-                        .Where(c => c.IsSelected)
-                        .Select(c => c.Content)
-                        .FirstOrDefault(),
-                    tone = p.Captions
-                        .Where(c => c.IsSelected)
-                        .Select(c => c.ToneOfVoice)
-                        .FirstOrDefault(),
-                    imageCount = p.Images.Count,
-                    imageUrl = p.Images
-                        .OrderBy(i => i.Order)
-                        .Select(i => i.Url)
-                        .FirstOrDefault(),
-                })
+                    caption = p.Captions.Where(c => c.IsSelected).Select(c => c.Content).FirstOrDefault(),
+                    tone = p.Captions.Where(c => c.IsSelected).Select(c => c.ToneOfVoice).FirstOrDefault(),
+                    hashtags = p.Captions.Where(c => c.IsSelected).Select(c => c.Hashtags).FirstOrDefault(),
+                    platforms = p.Captions.Where(c => c.IsSelected).Select(c => c.Platforms).FirstOrDefault(),
+                    imageCount = urls.Count,
+                    imageUrl = urls.FirstOrDefault(),   // ✅ first URL
+                    imageUrls = urls,                    // ✅ all URLs
+                };
             })
-            .FirstOrDefaultAsync();
-
-        if (topic == null) return NotFound();
-        return Ok(topic);
+        });
     }
 
     // POST api/topics
@@ -116,7 +114,15 @@ public class TopicsController : ControllerBase
         _db.Topics.Add(topic);
         await _db.SaveChangesAsync();
 
-        return Ok(new { id = topic.Id, name = topic.Name, description = topic.Description, platform = topic.Platform, createdAt = topic.CreatedAt, postCount = 0 });
+        return Ok(new
+        {
+            id = topic.Id,
+            name = topic.Name,
+            description = topic.Description,
+            platform = topic.Platform,
+            createdAt = topic.CreatedAt,
+            postCount = 0,
+        });
     }
 
     // DELETE api/topics/{id}
