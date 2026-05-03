@@ -1,5 +1,7 @@
-﻿using AutoGenerate.Shared.Data;
+﻿
+using AutoGenerate.Shared.Data;
 using AutoGenerate.Shared.Models;
+using AutoGenerate.SocialAccounts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -37,12 +39,10 @@ public class SocialController : ControllerBase
         return await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
     }
 
-    // Get Instagram account from DB for the current user
     private async Task<SocialAccount?> GetInstagramAccountAsync()
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return null;
-
         return await _db.SocialAccounts
             .FirstOrDefaultAsync(a =>
                 a.UserId == user.Id &&
@@ -56,15 +56,12 @@ public class SocialController : ControllerBase
         var url = $"{BASE}/{path}";
         var sep = url.Contains("?") ? "&" : "?";
         url += $"{sep}access_token={accessToken}";
-
         var res = await _http.GetAsync(url);
         var raw = await res.Content.ReadAsStringAsync();
-
         try
         {
             var doc = JsonDocument.Parse(raw);
-            if (doc.RootElement.TryGetProperty("error", out _))
-                return null;
+            if (doc.RootElement.TryGetProperty("error", out _)) return null;
             return doc.RootElement;
         }
         catch { return null; }
@@ -88,99 +85,6 @@ public class SocialController : ControllerBase
         public double Confidence { get; init; } = 0.5;
     }
 
-    //private async Task<(bool Success, string Error, List<AiSentimentComment> Comments, string Summary)> AnalyzeCommentsWithGroqAsync(List<RawIgComment> comments)
-    //{
-    //    var apiKey = _config["Groq:ApiKey"];
-    //    if (string.IsNullOrWhiteSpace(apiKey))
-    //        return (false, "Groq API key is missing.", new List<AiSentimentComment>(), "");
-
-    //    var promptComments = comments.Select((c, idx) => new
-    //    {
-    //        index = idx + 1,
-    //        id = c.Id,
-    //        text = c.Text
-    //    });
-
-    //    var body = new
-    //    {
-    //        model = "llama-3.1-8b-instant",
-    //        temperature = 0.1,
-    //        response_format = new { type = "json_object" },
-    //        messages = new object[]
-    //        {
-    //            new
-    //            {
-    //                role = "system",
-    //                content = "You are a strict sentiment classifier for social-media comments. Classify each comment as positive, neutral, or negative."
-    //            },
-    //            new
-    //            {
-    //                role = "user",
-    //                content =
-    //                    "Analyze the sentiment of each Instagram comment and return strict JSON with this shape: " +
-    //                    "{\"sentiments\":[{\"index\":1,\"sentiment\":\"positive|neutral|negative\",\"confidence\":0.0}],\"summary\":\"short summary\"}. " +
-    //                    "Do not add extra keys. Here are the comments:\n" + JsonSerializer.Serialize(promptComments)
-    //            }
-    //        }
-    //    };
-
-    //    var request = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
-    //    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-    //    request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-
-    //    var response = await _http.SendAsync(request);
-    //    var raw = await response.Content.ReadAsStringAsync();
-    //    if (!response.IsSuccessStatusCode)
-    //        return (false, $"Groq request failed: {(int)response.StatusCode}", new List<AiSentimentComment>(), "");
-
-    //    try
-    //    {
-    //        var root = JsonDocument.Parse(raw).RootElement;
-    //        var content = root
-    //            .GetProperty("choices")[0]
-    //            .GetProperty("message")
-    //            .GetProperty("content")
-    //            .GetString() ?? "{}";
-
-    //        var parsed = JsonDocument.Parse(content).RootElement;
-    //        var summary = parsed.TryGetProperty("summary", out var s) ? (s.GetString() ?? "") : "";
-
-    //        var sentimentByIndex = new Dictionary<int, (string Sentiment, double Confidence)>();
-    //        if (parsed.TryGetProperty("sentiments", out var sentiments) && sentiments.ValueKind == JsonValueKind.Array)
-    //        {
-    //            foreach (var item in sentiments.EnumerateArray())
-    //            {
-    //                var index = item.TryGetProperty("index", out var i) ? i.GetInt32() : 0;
-    //                var sentiment = item.TryGetProperty("sentiment", out var st) ? (st.GetString() ?? "neutral").ToLowerInvariant() : "neutral";
-    //                var confidence = item.TryGetProperty("confidence", out var cf) && cf.ValueKind == JsonValueKind.Number ? cf.GetDouble() : 0.5;
-    //                if (sentiment is not ("positive" or "neutral" or "negative")) sentiment = "neutral";
-    //                if (index > 0) sentimentByIndex[index] = (sentiment, confidence);
-    //            }
-    //        }
-
-    //        var enriched = comments.Select((c, idx) =>
-    //        {
-    //            var key = idx + 1;
-    //            var val = sentimentByIndex.TryGetValue(key, out var x) ? x : ("neutral", 0.5);
-    //            return new AiSentimentComment
-    //            {
-    //                Id = c.Id,
-    //                Text = c.Text,
-    //                Timestamp = c.Timestamp,
-    //                Username = c.Username,
-    //                Sentiment = val.Item1,
-    //                Confidence = Math.Round(val.Item2, 3)
-    //            };
-    //        }).ToList();
-
-    //        return (true, "", enriched, summary);
-    //    }
-    //    catch
-    //    {
-    //        return (false, "Failed to parse Groq sentiment response.", new List<AiSentimentComment>(), "");
-    //    }
-    //}
-
     // ── GET /api/social/instagram/overview ────────────────────────────────────
 
     [HttpGet("instagram/overview")]
@@ -188,15 +92,10 @@ public class SocialController : ControllerBase
     {
         var ig = await GetInstagramAccountAsync();
         if (ig == null) return NotFound(new { message = "Instagram account not connected" });
-
         var data = await GetGraph(
             $"{ig.AccountId}?fields=followers_count,media_count,profile_picture_url,name,biography,website",
-            ig.AccessToken
-        );
-
-        if (data == null)
-            return StatusCode(502, new { message = "Failed to fetch Instagram overview" });
-
+            ig.AccessToken);
+        if (data == null) return StatusCode(502, new { message = "Failed to fetch Instagram overview" });
         return Ok(data);
     }
 
@@ -207,18 +106,12 @@ public class SocialController : ControllerBase
     {
         var ig = await GetInstagramAccountAsync();
         if (ig == null) return NotFound(new { message = "Instagram account not connected" });
-
         var since = DateTimeOffset.UtcNow.AddDays(-days).ToUnixTimeSeconds();
         var until = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-
         var data = await GetGraph(
             $"{ig.AccountId}/insights?metric=reach,follower_count&period={period}&since={since}&until={until}",
-            ig.AccessToken
-        );
-
-        if (data == null)
-            return StatusCode(502, new { message = "Failed to fetch Instagram insights" });
-
+            ig.AccessToken);
+        if (data == null) return StatusCode(502, new { message = "Failed to fetch Instagram insights" });
         return Ok(data);
     }
 
@@ -229,15 +122,10 @@ public class SocialController : ControllerBase
     {
         var ig = await GetInstagramAccountAsync();
         if (ig == null) return NotFound(new { message = "Instagram account not connected" });
-
         var data = await GetGraph(
             $"{ig.AccountId}/media?fields=id,caption,media_type,media_url,thumbnail_url,timestamp,like_count,comments_count,permalink&limit={limit}",
-            ig.AccessToken
-        );
-
-        if (data == null)
-            return StatusCode(502, new { message = "Failed to fetch Instagram media" });
-
+            ig.AccessToken);
+        if (data == null) return StatusCode(502, new { message = "Failed to fetch Instagram media" });
         return Ok(data);
     }
 
@@ -248,15 +136,10 @@ public class SocialController : ControllerBase
     {
         var ig = await GetInstagramAccountAsync();
         if (ig == null) return NotFound(new { message = "Instagram account not connected" });
-
         var data = await GetGraph(
             $"{mediaId}/insights?metric=impressions,reach,likes,comments,shares,saved",
-            ig.AccessToken
-        );
-
-        if (data == null)
-            return StatusCode(502, new { message = "Failed to fetch media insights" });
-
+            ig.AccessToken);
+        if (data == null) return StatusCode(502, new { message = "Failed to fetch media insights" });
         return Ok(data);
     }
 
@@ -268,98 +151,26 @@ public class SocialController : ControllerBase
         var ig = await GetInstagramAccountAsync();
         if (ig == null) return NotFound(new { message = "Instagram account not connected" });
         if (string.IsNullOrWhiteSpace(mediaId)) return BadRequest(new { message = "mediaId is required" });
-
         var safeLimit = Math.Clamp(limit, 1, 100);
         var data = await GetGraph(
             $"{mediaId}/comments?fields=id,text,timestamp,username&limit={safeLimit}",
-            ig.AccessToken
-        );
-
-        if (data == null)
-            return StatusCode(502, new { message = "Failed to fetch media comments" });
-
+            ig.AccessToken);
+        if (data == null) return StatusCode(502, new { message = "Failed to fetch media comments" });
         return Ok(data);
     }
 
-    // ── GET /api/social/instagram/media/{mediaId}/sentiment ───────────────────
-
-    //[HttpGet("instagram/media/{mediaId}/sentiment")]
-    //public async Task<IActionResult> GetMediaSentiment(string mediaId, [FromQuery] int limit = 50)
-    //{
-    //    var ig = await GetInstagramAccountAsync();
-    //    if (ig == null) return NotFound(new { message = "Instagram account not connected" });
-    //    if (string.IsNullOrWhiteSpace(mediaId)) return BadRequest(new { message = "mediaId is required" });
-
-    //    var safeLimit = Math.Clamp(limit, 1, 100);
-    //    var commentsData = await GetGraph(
-    //        $"{mediaId}/comments?fields=id,text,timestamp,username&limit={safeLimit}",
-    //        ig.AccessToken
-    //    );
-
-    //    if (commentsData == null)
-    //        return StatusCode(502, new { message = "Failed to fetch media comments" });
-
-    //    var comments = new List<RawIgComment>();
-    //    if (commentsData.Value.TryGetProperty("data", out var dataArray))
-    //    {
-    //        foreach (var comment in dataArray.EnumerateArray())
-    //        {
-    //            comments.Add(new RawIgComment
-    //            {
-    //                Id = comment.TryGetProperty("id", out var cid) ? cid.GetString() ?? "" : "",
-    //                Text = comment.TryGetProperty("text", out var txt) ? txt.GetString() ?? "" : "",
-    //                Timestamp = comment.TryGetProperty("timestamp", out var cts) ? cts.GetString() ?? "" : "",
-    //                Username = comment.TryGetProperty("username", out var un) ? un.GetString() ?? "" : "",
-    //            });
-    //        }
-    //    }
-
-    //    if (comments.Count == 0)
-    //    {
-    //        return Ok(new
-    //        {
-    //            postId = mediaId,
-    //            summary = "No comments to analyze.",
-    //            positive = 0,
-    //            neutral = 0,
-    //            negative = 0,
-    //            comments = Array.Empty<object>()
-    //        });
-    //    }
-
-    //    var ai = await AnalyzeCommentsWithGroqAsync(comments);
-    //    if (!ai.Success)
-    //        return StatusCode(502, new { message = ai.Error });
-
-    //    var positive = ai.Comments.Count(c => c.Sentiment == "positive");
-    //    var neutral = ai.Comments.Count(c => c.Sentiment == "neutral");
-    //    var negative = ai.Comments.Count(c => c.Sentiment == "negative");
-
-    //    return Ok(new
-    //    {
-    //        postId = mediaId,
-    //        summary = ai.Summary,
-    //        positive,
-    //        neutral,
-    //        negative,
-    //        comments = ai.Comments
-    //    });
-    //}
-
-
+    // ── POST /api/social/instagram/sentiment ──────────────────────────────────
 
     [HttpPost("instagram/sentiment")]
     public async Task<IActionResult> AnalyzeSentiment([FromBody] SentimentRequestDto dto)
     {
-        // 1. Récupère les commentaires depuis Instagram
-        var httpClient = _httpClientFactory.CreateClient();
-        var account = await _db.SocialAccounts
-            .FirstOrDefaultAsync(a => a.Platform == "instagram" && a.IsConnected);
-        if (account == null) return NotFound("No Instagram account");
+        var ig = await GetInstagramAccountAsync();
+        if (ig == null) return NotFound("No Instagram account");
 
         var igUrl = $"https://graph.facebook.com/v20.0/{dto.PostId}/comments" +
-                    $"?fields=text&limit=50&access_token={account.AccessToken}";
-        var igRes = await httpClient.GetFromJsonAsync<JsonElement>(igUrl);
+                    $"?fields=text&limit=50&access_token={ig.AccessToken}";
+        var igRes = await _http.GetFromJsonAsync<JsonElement>(igUrl);
+
         var comments = igRes.GetProperty("data")
             .EnumerateArray()
             .Select(c => c.GetProperty("text").GetString() ?? "")
@@ -369,11 +180,9 @@ public class SocialController : ControllerBase
         if (comments.Count == 0)
             return Ok(new { positive = 0, negative = 0, neutral = 0, total = 0, summary = "No comments." });
 
-        // 2. Appelle le service Python
         var payload = new { comments, caption = dto.Caption };
-        var response = await httpClient.PostAsJsonAsync("http://localhost:8001/analyze", payload);
+        var response = await _http.PostAsJsonAsync("http://localhost:8001/analyze", payload);
         var result = await response.Content.ReadFromJsonAsync<object>();
-
         return Ok(result);
     }
 
@@ -384,15 +193,10 @@ public class SocialController : ControllerBase
     {
         var ig = await GetInstagramAccountAsync();
         if (ig == null) return NotFound(new { message = "Instagram account not connected" });
-
         var data = await GetGraph(
             $"{ig.AccountId}/insights?metric=audience_country,audience_city,audience_gender_age&period=lifetime",
-            ig.AccessToken
-        );
-
-        if (data == null)
-            return StatusCode(502, new { message = "Failed to fetch audience data" });
-
+            ig.AccessToken);
+        if (data == null) return StatusCode(502, new { message = "Failed to fetch audience data" });
         return Ok(data);
     }
 
@@ -408,19 +212,9 @@ public class SocialController : ControllerBase
         var accountId = ig.AccountId!;
         var accessToken = ig.AccessToken;
 
-        // Fetch all in parallel
-        var overviewTask = GetGraph(
-            $"{accountId}?fields=followers_count,media_count,name,profile_picture_url",
-            accessToken
-        );
-        var insightsTask = GetGraph(
-            $"{accountId}/insights?metric=reach,follower_count&period=day&since={DateTimeOffset.UtcNow.AddDays(-30).ToUnixTimeSeconds()}&until={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
-            accessToken
-        );
-        var mediaTask = GetGraph(
-            $"{accountId}/media?fields=id,caption,media_type,timestamp,like_count,comments_count,permalink,media_url,thumbnail_url&limit=6",
-            accessToken
-        );
+        var overviewTask = GetGraph($"{accountId}?fields=followers_count,media_count,name,profile_picture_url", accessToken);
+        var insightsTask = GetGraph($"{accountId}/insights?metric=reach,follower_count&period=day&since={DateTimeOffset.UtcNow.AddDays(-30).ToUnixTimeSeconds()}&until={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}", accessToken);
+        var mediaTask = GetGraph($"{accountId}/media?fields=id,caption,media_type,timestamp,like_count,comments_count,permalink,media_url,thumbnail_url&limit=6", accessToken);
 
         await Task.WhenAll(overviewTask, insightsTask, mediaTask);
 
@@ -428,10 +222,10 @@ public class SocialController : ControllerBase
         var insights = await insightsTask;
         var media = await mediaTask;
 
-        // Parse media + comments per post
         var topPosts = new List<object>();
         var totalLikes = 0;
         var totalComments = 0;
+
         if (media.HasValue && media.Value.TryGetProperty("data", out var mediaData))
         {
             foreach (var item in mediaData.EnumerateArray())
@@ -440,25 +234,22 @@ public class SocialController : ControllerBase
                 var caption = item.TryGetProperty("caption", out var cap) ? cap.GetString() : "";
                 var mediaType = item.TryGetProperty("media_type", out var mt) ? mt.GetString() : "";
                 var mediaUrl = item.TryGetProperty("media_url", out var mu) ? mu.GetString() :
-                               item.TryGetProperty("thumbnail_url", out var tu) ? tu.GetString() : "";
+                                   item.TryGetProperty("thumbnail_url", out var tu) ? tu.GetString() : "";
                 var timestamp = item.TryGetProperty("timestamp", out var ts) ? ts.GetString() : "";
                 var likeCount = item.TryGetProperty("like_count", out var lc) ? lc.GetInt32() : 0;
                 var commentCount = item.TryGetProperty("comments_count", out var cc) ? cc.GetInt32() : 0;
                 var permalink = item.TryGetProperty("permalink", out var pl) ? pl.GetString() : "";
 
-                var comments = new List<object>();
+                var postComments = new List<object>();
                 if (!string.IsNullOrWhiteSpace(mediaId) && commentCount > 0)
                 {
                     var commentsData = await GetGraph(
-                        $"{mediaId}/comments?fields=id,text,timestamp,username&limit=50",
-                        accessToken
-                    );
-
+                        $"{mediaId}/comments?fields=id,text,timestamp,username&limit=50", accessToken);
                     if (commentsData.HasValue && commentsData.Value.TryGetProperty("data", out var commentsArray))
                     {
                         foreach (var comment in commentsArray.EnumerateArray())
                         {
-                            comments.Add(new
+                            postComments.Add(new
                             {
                                 id = comment.TryGetProperty("id", out var cid) ? cid.GetString() : "",
                                 text = comment.TryGetProperty("text", out var txt) ? txt.GetString() : "",
@@ -469,25 +260,12 @@ public class SocialController : ControllerBase
                     }
                 }
 
-                topPosts.Add(new
-                {
-                    id = mediaId,
-                    caption,
-                    mediaType,
-                    mediaUrl,
-                    timestamp,
-                    likeCount,
-                    commentCount,
-                    permalink,
-                    comments,
-                });
-
+                topPosts.Add(new { id = mediaId, caption, mediaType, mediaUrl, timestamp, likeCount, commentCount, permalink, comments = postComments });
                 totalLikes += likeCount;
                 totalComments += commentCount;
             }
         }
 
-        // Parse insights
         var reachTimeline = new List<object>();
         var followerTimeline = new List<object>();
 
@@ -497,16 +275,12 @@ public class SocialController : ControllerBase
             {
                 var metricName = metric.TryGetProperty("name", out var mn) ? mn.GetString() : "";
                 if (!metric.TryGetProperty("values", out var vals)) continue;
-
                 foreach (var val in vals.EnumerateArray())
                 {
                     var value = val.TryGetProperty("value", out var v) ? v.GetInt32() : 0;
                     var endTime = val.TryGetProperty("end_time", out var et) ? et.GetString() : "";
-
-                    if (metricName == "reach")
-                        reachTimeline.Add(new { date = endTime, value });
-                    else if (metricName == "follower_count")
-                        followerTimeline.Add(new { date = endTime, value });
+                    if (metricName == "reach") reachTimeline.Add(new { date = endTime, value });
+                    else if (metricName == "follower_count") followerTimeline.Add(new { date = endTime, value });
                 }
             }
         }
@@ -516,24 +290,12 @@ public class SocialController : ControllerBase
         var name = overview.HasValue && overview.Value.TryGetProperty("name", out var nm) ? nm.GetString() : "";
         var picture = overview.HasValue && overview.Value.TryGetProperty("profile_picture_url", out var pp) ? pp.GetString() : "";
 
-        // ✅ Update DB with latest profile data
         ig.FollowersCount = followers;
         ig.ProfilePicture = picture;
         ig.Username = name;
         await _db.SaveChangesAsync();
 
-        return Ok(new
-        {
-            followers,
-            mediaCount,
-            name,
-            profilePicture = picture,
-            reachTimeline,
-            followerTimeline,
-            topPosts,
-            totalLikes,
-            totalComments,
-        });
+        return Ok(new { followers, mediaCount, name, profilePicture = picture, reachTimeline, followerTimeline, topPosts, totalLikes, totalComments });
     }
 
     // ── Facebook helpers ──────────────────────────────────────────────────────
@@ -542,7 +304,6 @@ public class SocialController : ControllerBase
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return null;
-
         return await _db.SocialAccounts
             .FirstOrDefaultAsync(a =>
                 a.UserId == user.Id &&
@@ -563,19 +324,9 @@ public class SocialController : ControllerBase
         var pageId = fb.AccountId!;
         var accessToken = fb.AccessToken;
 
-        // Fetch in parallel
-        var overviewTask = GetGraph(
-            $"{pageId}?fields=name,fan_count,followers_count,picture.type(large),about,website",
-            accessToken
-        );
-        var insightsTask = GetGraph(
-            $"{pageId}/insights?metric=page_impressions,page_engaged_users,page_post_engagements,page_fan_adds&period=day&since={DateTimeOffset.UtcNow.AddDays(-30).ToUnixTimeSeconds()}&until={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
-            accessToken
-        );
-        var postsTask = GetGraph(
-            $"{pageId}/posts?fields=id,message,story,created_time,full_picture,permalink_url&limit=6",
-            accessToken
-        );
+        var overviewTask = GetGraph($"{pageId}?fields=name,fan_count,followers_count,picture.type(large),about,website", accessToken);
+        var insightsTask = GetGraph($"{pageId}/insights?metric=page_impressions,page_engaged_users,page_post_engagements,page_fan_adds&period=day&since={DateTimeOffset.UtcNow.AddDays(-30).ToUnixTimeSeconds()}&until={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}", accessToken);
+        var postsTask = GetGraph($"{pageId}/posts?fields=id,message,story,created_time,full_picture,permalink_url&limit=6", accessToken);
 
         await Task.WhenAll(overviewTask, insightsTask, postsTask);
 
@@ -583,7 +334,6 @@ public class SocialController : ControllerBase
         var insights = await insightsTask;
         var posts = await postsTask;
 
-        // Parse posts
         var recentPosts = new List<object>();
         if (posts.HasValue && posts.Value.TryGetProperty("data", out var postsData))
         {
@@ -601,7 +351,6 @@ public class SocialController : ControllerBase
             }
         }
 
-        // Parse insights into timelines
         var impressionsTimeline = new List<object>();
         var engagedUsersTimeline = new List<object>();
         var fanAddsTimeline = new List<object>();
@@ -612,12 +361,10 @@ public class SocialController : ControllerBase
             {
                 var metricName = metric.TryGetProperty("name", out var mn) ? mn.GetString() : "";
                 if (!metric.TryGetProperty("values", out var vals)) continue;
-
                 foreach (var val in vals.EnumerateArray())
                 {
                     var value = val.TryGetProperty("value", out var v) ? v.GetInt32() : 0;
                     var endTime = val.TryGetProperty("end_time", out var et) ? et.GetString() : "";
-
                     if (metricName == "page_impressions") impressionsTimeline.Add(new { date = endTime, value });
                     else if (metricName == "page_engaged_users") engagedUsersTimeline.Add(new { date = endTime, value });
                     else if (metricName == "page_fan_adds") fanAddsTimeline.Add(new { date = endTime, value });
@@ -632,7 +379,6 @@ public class SocialController : ControllerBase
             ? (pp.TryGetProperty("data", out var ppData) && ppData.TryGetProperty("url", out var ppUrl) ? ppUrl.GetString() : "")
             : "";
 
-        // Update DB
         fb.FollowersCount = followers > 0 ? followers : fans;
         fb.ProfilePicture = picture;
         fb.Username = name;
@@ -651,5 +397,308 @@ public class SocialController : ControllerBase
             totalImpressions = impressionsTimeline.Sum(p => (int)p.GetType().GetProperty("value")!.GetValue(p)!),
             totalEngagedUsers = engagedUsersTimeline.Sum(p => (int)p.GetType().GetProperty("value")!.GetValue(p)!),
         });
+    }
+
+    // ── GET /api/social/tiktok/auth ───────────────────────────────────────────
+
+    [HttpGet("tiktok/auth")]
+    [AllowAnonymous]
+    public IActionResult TikTokAuth([FromQuery] string token = "")
+    {
+        var clientKey = _config["TikTok:ClientKey"];
+        var redirectUri = _config["TikTok:RedirectUri"];
+        var codeVerifier = GenerateCodeVerifier();
+        var codeChallenge = GenerateCodeChallenge(codeVerifier);
+
+        // Extract email from JWT to embed in state
+        string email = "";
+        try
+        {
+            var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+            var parsed = handler.ReadJwtToken(token);
+            email = parsed.Claims.FirstOrDefault(c =>
+                c.Type == ClaimTypes.Name ||
+                c.Type == "unique_name" ||
+                c.Type == "email")?.Value ?? "";
+        }
+        catch { }
+
+        // Encode email + verifier in state (base64)
+        var stateData = Convert.ToBase64String(
+            Encoding.UTF8.GetBytes($"{email}||{codeVerifier}")
+        ).Replace("+", "-").Replace("/", "_").Replace("=", "");
+
+        var url = "https://www.tiktok.com/v2/auth/authorize/" +
+            $"?client_key={clientKey}" +
+            $"&scope=user.info.basic,user.info.stats,video.list" +
+            $"&response_type=code" +
+            $"&redirect_uri={Uri.EscapeDataString(redirectUri!)}" +
+            $"&state={stateData}" +
+            $"&code_challenge={codeChallenge}" +
+            $"&code_challenge_method=S256";
+
+        return Redirect(url);
+    }
+
+    // ── GET /api/social/tiktok/callback ──────────────────────────────────────
+
+    [HttpGet("tiktok/callback")]
+    [AllowAnonymous]
+    public async Task<IActionResult> TikTokCallback([FromQuery] string code, [FromQuery] string state)
+    {
+        var clientKey = _config["TikTok:ClientKey"];
+        var clientSecret = _config["TikTok:ClientSecret"];
+        var redirectUri = _config["TikTok:RedirectUri"];
+
+        // ── Decode email + verifier from state ────────────────────────────
+        string email = "";
+        string codeVerifier = "";
+        try
+        {
+            // TikTok may URL-encode the state — decode it first
+            var raw = Uri.UnescapeDataString(state ?? "");
+            var padded = raw.Replace("-", "+").Replace("_", "/");
+            var pad = padded.Length % 4;
+            if (pad > 0) padded += new string('=', 4 - pad);
+            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(padded));
+            Console.WriteLine($"[TikTok Callback] decoded state: {decoded}");
+            var parts = decoded.Split("||");
+            email = parts.Length > 0 ? parts[0] : "";
+            codeVerifier = parts.Length > 1 ? parts[1] : "";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TikTok Callback] state decode error: {ex.Message} | raw state: {state}");
+        }
+
+        if (string.IsNullOrEmpty(email))
+            return Redirect("http://localhost:5173/dashboard?error=tiktok_auth_failed");
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
+        if (user == null)
+            return Redirect("http://localhost:5173/dashboard?error=tiktok_auth_failed");
+
+        // ── Exchange code for token ───────────────────────────────────────
+        var tokenRes = await _http.PostAsync("https://open.tiktokapis.com/v2/oauth/token/",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["client_key"] = clientKey!,
+                ["client_secret"] = clientSecret!,
+                ["code"] = code,
+                ["grant_type"] = "authorization_code",
+                ["redirect_uri"] = redirectUri!,
+                ["code_verifier"] = codeVerifier,
+            }));
+
+        var tokenRaw = await tokenRes.Content.ReadAsStringAsync();
+        Console.WriteLine($"[TikTok Callback] token response: {tokenRaw}");
+
+        JsonElement tokenJson;
+        try { tokenJson = JsonDocument.Parse(tokenRaw).RootElement; }
+        catch { return Redirect("http://localhost:5173/dashboard?error=tiktok_token_failed"); }
+
+        var accessToken = tokenJson.TryGetProperty("access_token", out var at) ? at.GetString() ?? "" : "";
+        var refreshToken = tokenJson.TryGetProperty("refresh_token", out var rt) ? rt.GetString() ?? "" : "";
+        var openId = tokenJson.TryGetProperty("open_id", out var oi) ? oi.GetString() ?? "" : "";
+
+        if (string.IsNullOrEmpty(accessToken))
+            return Redirect("http://localhost:5173/dashboard?error=tiktok_token_failed");
+
+        // ── Fetch user info ───────────────────────────────────────────────
+        var userReq = new HttpRequestMessage(HttpMethod.Get,
+            "https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name,avatar_url,follower_count,following_count,likes_count,video_count");
+        userReq.Headers.Add("Authorization", $"Bearer {accessToken}");
+        var userRes = await _http.SendAsync(userReq);
+        var userRaw = await userRes.Content.ReadAsStringAsync();
+        Console.WriteLine($"[TikTok Callback] user info: {userRaw}");
+
+        string ttUsername = "";
+        string ttPicture = "";
+        try
+        {
+            var userJson = JsonDocument.Parse(userRaw).RootElement;
+            var userData = userJson.GetProperty("data").GetProperty("user");
+            ttUsername = userData.TryGetProperty("display_name", out var dn) ? dn.GetString() ?? "" : "";
+            ttPicture = userData.TryGetProperty("avatar_url", out var av) ? av.GetString() ?? "" : "";
+        }
+        catch { }
+
+        // ── Save to DB ────────────────────────────────────────────────────
+        var existing = await _db.SocialAccounts
+            .FirstOrDefaultAsync(a => a.UserId == user.Id && a.Platform == "tiktok");
+
+        if (existing != null)
+        {
+            existing.AccessToken = accessToken;
+            existing.RefreshToken = refreshToken;
+            existing.AccountId = openId;
+            existing.Username = ttUsername;
+            existing.ProfilePicture = ttPicture;
+            existing.IsConnected = true;
+            existing.ConnectedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            _db.SocialAccounts.Add(new SocialAccount
+            {
+                UserId = user.Id,
+                Platform = "tiktok",
+                AccessToken = accessToken,
+                RefreshToken = refreshToken,
+                AccountId = openId,
+                Username = ttUsername,
+                ProfilePicture = ttPicture,
+                IsConnected = true,
+                ConnectedAt = DateTime.UtcNow,
+            });
+        }
+
+        await _db.SaveChangesAsync();
+        return Redirect("http://localhost:5173/dashboard?connected=tiktok");
+    }
+
+    // ── GET /api/social/tiktok/summary ───────────────────────────────────────
+
+    [HttpGet("tiktok/summary")]
+    public async Task<IActionResult> GetTikTokSummary()
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized();
+
+        var account = await _db.SocialAccounts
+            .FirstOrDefaultAsync(a => a.UserId == user.Id && a.Platform == "tiktok" && a.IsConnected);
+        if (account == null)
+            return NotFound(new { message = "TikTok account not connected" });
+
+        // Fetch user stats
+        var userReq = new HttpRequestMessage(HttpMethod.Get,
+            "https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name,avatar_url,follower_count,following_count,likes_count,video_count");
+        userReq.Headers.Add("Authorization", $"Bearer {account.AccessToken}");
+        var userRes = await _http.SendAsync(userReq);
+        var userRaw = await userRes.Content.ReadAsStringAsync();
+        var userJson = JsonDocument.Parse(userRaw).RootElement;
+        var userData = userJson.GetProperty("data").GetProperty("user");
+
+        // Fetch recent videos
+        var videoReq = new HttpRequestMessage(HttpMethod.Post,
+            "https://open.tiktokapis.com/v2/video/list/?fields=id,title,cover_image_url,share_url,view_count,like_count,comment_count,share_count,create_time");
+        videoReq.Headers.Add("Authorization", $"Bearer {account.AccessToken}");
+        videoReq.Content = new StringContent(JsonSerializer.Serialize(new { max_count = 10 }), Encoding.UTF8, "application/json");
+        var videoRes = await _http.SendAsync(videoReq);
+        var videoRaw = await videoRes.Content.ReadAsStringAsync();
+        var videoJson = JsonDocument.Parse(videoRaw).RootElement;
+
+        var videos = new List<object>();
+        var totalViews = 0;
+        var totalLikes = 0;
+        var totalComments = 0;
+        var totalShares = 0;
+
+        if (videoJson.TryGetProperty("data", out var videoData) &&
+            videoData.TryGetProperty("videos", out var videoList))
+        {
+            foreach (var v in videoList.EnumerateArray())
+            {
+                var views = v.TryGetProperty("view_count", out var vc) ? vc.GetInt32() : 0;
+                var likes = v.TryGetProperty("like_count", out var lc) ? lc.GetInt32() : 0;
+                var comments = v.TryGetProperty("comment_count", out var cc) ? cc.GetInt32() : 0;
+                var shares = v.TryGetProperty("share_count", out var sc) ? sc.GetInt32() : 0;
+
+                totalViews += views;
+                totalLikes += likes;
+                totalComments += comments;
+                totalShares += shares;
+
+                videos.Add(new
+                {
+                    id = v.TryGetProperty("id", out var id) ? id.GetString() : "",
+                    title = v.TryGetProperty("title", out var ti) ? ti.GetString() : "",
+                    coverUrl = v.TryGetProperty("cover_image_url", out var cu) ? cu.GetString() : "",
+                    shareUrl = v.TryGetProperty("share_url", out var su) ? su.GetString() : "",
+                    createTime = v.TryGetProperty("create_time", out var ct) ? ct.GetInt64().ToString() : "",
+                    viewCount = views,
+                    likeCount = likes,
+                    commentCount = comments,
+                    shareCount = shares,
+                });
+            }
+        }
+
+        var followers = userData.TryGetProperty("follower_count", out var fc) ? fc.GetInt32() : 0;
+        var following = userData.TryGetProperty("following_count", out var fg) ? fg.GetInt32() : 0;
+        var totalAccountLikes = userData.TryGetProperty("likes_count", out var lk) ? lk.GetInt32() : 0;
+        var videoCount = userData.TryGetProperty("video_count", out var vn) ? vn.GetInt32() : 0;
+        var name = userData.TryGetProperty("display_name", out var nm) ? nm.GetString() : "";
+        var picture = userData.TryGetProperty("avatar_url", out var av) ? av.GetString() : "";
+
+        account.FollowersCount = followers;
+        account.ProfilePicture = picture;
+        account.Username = name;
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            followers,
+            following,
+            likes = totalAccountLikes,
+            videoCount,
+            name,
+            profilePicture = picture,
+            recentVideos = videos,
+            totalViews,
+            totalLikes,
+            totalComments,
+            totalShares,
+            viewsTimeline = new List<object>(),
+            likesTimeline = new List<object>(),
+        });
+    }
+
+    // ── GET /api/social/accounts/tokens ──────────────────────────────────────
+
+    [HttpGet("accounts/tokens")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetTokens()
+    {
+        var accounts = await _db.SocialAccounts
+            .Where(s => s.IsConnected)
+            .Select(s => new {
+                s.Id,
+                s.Platform,
+                s.AccessToken,
+                s.RefreshToken,
+                s.AccountId,
+                s.Username
+            })
+            .ToListAsync();
+        return Ok(accounts);
+    }
+
+    [HttpPatch("accounts/tokens/{id}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> UpdateToken(int id, [FromBody] UpdateTokenDto dto)
+    {
+        var account = await _db.SocialAccounts.FindAsync(id);
+        if (account == null) return NotFound();
+        account.AccessToken = dto.AccessToken;
+        if (dto.RefreshToken != null) account.RefreshToken = dto.RefreshToken;
+        account.ConnectedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { message = "Token updated" });
+    }
+
+    // ── PKCE Helpers ──────────────────────────────────────────────────────────
+
+    private static string GenerateCodeVerifier()
+    {
+        var bytes = new byte[32];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+        return Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").Replace("=", "");
+    }
+
+    private static string GenerateCodeChallenge(string verifier)
+    {
+        var bytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(verifier));
+        return Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").Replace("=", "");
     }
 }

@@ -1,4 +1,5 @@
-﻿    using AutoGenerate.Auth;
+﻿using AutoGenerate.AiService;
+using AutoGenerate.Auth;
     using AutoGenerate.Shared.Models;
     using Microsoft.EntityFrameworkCore;
 
@@ -15,9 +16,11 @@
         public DbSet<SocialAccount> SocialAccounts { get; set; }
         public DbSet<AutoGenerate.CaptionService.Models.Caption> Captions { get; set; }
 
-        public DbSet<PostImage> PostImages { get; set; }
+    public DbSet<AiRecommendation> AiRecommendations { get; set; }
 
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
+    public DbSet<PostImage> PostImages { get; set; }
+   
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<User>()
                 .HasIndex(u => u.Email)
