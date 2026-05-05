@@ -371,18 +371,29 @@ public class PostsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeletePost(int id)
     {
-        var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized();
-
         var post = await _db.Posts
             .Include(p => p.Captions)
-            .FirstOrDefaultAsync(p => p.Id == id && p.UserId == user.Id);
+            .Include(p => p.Media)
+            .FirstOrDefaultAsync(p => p.Id == id);
+
         if (post == null) return NotFound();
 
-        _db.Captions.RemoveRange(post.Captions);
+        // ── Détache les ExternalTasks liées ──────────────────────────────
+        var externalTasks = await _db.ExternalTasks
+            .Where(t => t.PostId == id)
+            .ToListAsync();
+        foreach (var et in externalTasks)
+            et.PostId = null;
+        await _db.SaveChangesAsync();
+
+        // ── Supprime captions + media + post ─────────────────────────────
+        if (post.Media != null) _db.PostImages.Remove(post.Media);
+        if (post.Captions != null) _db.Captions.RemoveRange(post.Captions);
+
         _db.Posts.Remove(post);
         await _db.SaveChangesAsync();
-        return Ok(new { message = "Post deleted" });
+
+        return NoContent();
     }
 
     // ─── GET /api/posts/due ──────────────────────────────────────────────────

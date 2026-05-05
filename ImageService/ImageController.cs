@@ -109,7 +109,8 @@ public class ImageController : ControllerBase
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _config["HuggingFace:ApiKey"]);
 
         var hfResponse = await http.PostAsJsonAsync(
-            "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+            //"https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+            "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1",
             new { inputs = fullPrompt });
 
         if (!hfResponse.IsSuccessStatusCode)

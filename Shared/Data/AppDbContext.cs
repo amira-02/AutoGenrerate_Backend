@@ -17,6 +17,9 @@ using AutoGenerate.Auth;
         public DbSet<AutoGenerate.CaptionService.Models.Caption> Captions { get; set; }
 
     public DbSet<AiRecommendation> AiRecommendations { get; set; }
+        public DbSet<ExternalTask> ExternalTasks { get; set; }
+    public DbSet<Notification> Notifications { get; set; }
+   
 
     public DbSet<PostImage> PostImages { get; set; }
    

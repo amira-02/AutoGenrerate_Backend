@@ -20,6 +20,8 @@ public class Post
     public User? User { get; set; }
     public Topic? Topic { get; set; }
     public List<CaptionService.Models.Caption> Captions { get; set; } = new();
+    public string? ExternalTaskId { get; set; }
+    public string? ExternalCallback { get; set; }
 
     // ✅ One PostImage row per post containing ["url1","url2","url3"]
     public PostImage? Media { get; set; }
