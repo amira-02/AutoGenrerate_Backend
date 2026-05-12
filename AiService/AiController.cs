@@ -72,26 +72,26 @@ public class AiController : ControllerBase
 
         var prompt = $@"You are a professional social media strategist. Today is {todayStr}.
  
-Current trending topics on Google: {trendsText}
+            Current trending topics on Google: {trendsText}
  
-Account context:
-- Instagram: {dto.IgFollowers} followers, {dto.IgEngRate}% engagement rate, {dto.IgMediaCount} posts
-- Facebook: {dto.FbFans} fans
-- Recent post topics: {dto.RecentCaptions ?? "none yet"}
+            Account context:
+            - Instagram: {dto.IgFollowers} followers, {dto.IgEngRate}% engagement rate, {dto.IgMediaCount} posts
+            - Facebook: {dto.FbFans} fans
+            - Recent post topics: {dto.RecentCaptions ?? "none yet"}
  
-Based on these real trending topics and the account context, generate 5 specific actionable social media recommendations.
+            Based on these real trending topics and the account context, generate 5 specific actionable social media recommendations.
  
-Return ONLY a valid JSON array, no markdown, no explanation:
-[
-  {{
-    ""type"": ""trend or event or content or engagement"",
-    ""title"": ""short title max 8 words"",
-    ""description"": ""2 sentences explaining the opportunity"",
-    ""action"": ""one specific action starting with a verb"",
-    ""urgency"": ""high or medium or low"",
-    ""platform"": [""instagram"", ""facebook""]
-  }}
-]";
+            Return ONLY a valid JSON array, no markdown, no explanation:
+            [
+              {{
+                ""type"": ""trend or event or content or engagement"",
+                ""title"": ""short title max 8 words"",
+                ""description"": ""2 sentences explaining the opportunity"",
+                ""action"": ""one specific action starting with a verb"",
+                ""urgency"": ""high or medium or low"",
+                ""platform"": [""instagram"", ""facebook""]
+              }}
+            ]";
 
         var groqBody = new
         {

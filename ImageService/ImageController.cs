@@ -104,27 +104,18 @@ public class ImageController : ControllerBase
         var styleHint = styleMap.GetValueOrDefault(style ?? "realistic");
         var fullPrompt = $"{prompt}. Style: {styleHint}.";
 
-        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
-        http.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _config["HuggingFace:ApiKey"]);
+        var encodedPrompt = Uri.EscapeDataString(fullPrompt);
+        var pollinationsUrl = $"https://image.pollinations.ai/prompt/{encodedPrompt}?width=1024&height=1024&nologo=true";
 
-        var hfResponse = await http.PostAsJsonAsync(
-            //"https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
-            "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1",
-            new { inputs = fullPrompt });
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(3) };
+        var bytes = await http.GetByteArrayAsync(pollinationsUrl);
 
-        if (!hfResponse.IsSuccessStatusCode)
-            throw new Exception(await hfResponse.Content.ReadAsStringAsync());
-
-        var contentType = hfResponse.Content.Headers.ContentType?.MediaType ?? "image/png";
-        if (contentType.Contains("application/json"))
-            throw new Exception(await hfResponse.Content.ReadAsStringAsync());
-
-        var bytes = await hfResponse.Content.ReadAsByteArrayAsync();
-        if (bytes.Length == 0) throw new Exception("Empty image returned from HuggingFace");
+        if (bytes.Length == 0)
+            throw new Exception("Image vide retournée par Pollinations");
 
         return await UploadBytesAsync(bytes, "generated.png");
-    }
+    }   
+
 
     // ── Helper: get or create PostImage for a post ────────────────────────────
 
