@@ -1,4 +1,5 @@
 using AutoGenerate.Auth;
+using AutoGenerate.SheetSync;
 using AutoGenerate.Shared.Data;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,10 @@ builder.Services.AddScoped<OtpService>();
 builder.Services.AddScoped<EmailService>();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IConfiguration>(config);
+
+// Sheet sync — registered as singleton so controllers can inject it for manual trigger
+builder.Services.AddSingleton<SheetSyncService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<SheetSyncService>());
 
 // ── File upload size (must be BEFORE Build()) ─────────────────────────────────
 builder.Services.Configure<FormOptions>(options =>

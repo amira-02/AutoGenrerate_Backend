@@ -22,15 +22,27 @@ public class TopicsController : ControllerBase
         return await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
     }
 
-    // GET api/topics
+    // GET api/topics?clientId=X
     [HttpGet]
-    public async Task<IActionResult> GetTopics()
+    public async Task<IActionResult> GetTopics([FromQuery] int clientId = 0)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
 
-        var topics = await _db.Topics
-            .Where(t => t.UserId == user.Id)
+        IQueryable<Topic> query = _db.Topics;
+
+        if (clientId > 0)
+        {
+            var clientBelongs = await _db.Clients.AnyAsync(c => c.Id == clientId && c.UserId == user.Id);
+            if (!clientBelongs) return Forbid();
+            query = query.Where(t => t.ClientId == clientId);
+        }
+        else
+        {
+            query = query.Where(t => t.UserId == user.Id);
+        }
+
+        var topics = await query
             .OrderByDescending(t => t.CreatedAt)
             .Select(t => new
             {
@@ -104,7 +116,8 @@ public class TopicsController : ControllerBase
 
         var topic = new Topic
         {
-            UserId = user.Id,
+            UserId   = user.Id,
+            ClientId = dto.ClientId,
             Name = dto.Name.Trim(),
             Description = dto.Description?.Trim(),
             Platform = dto.Platform?.Trim() ?? "",

@@ -39,14 +39,16 @@ public class SocialController : ControllerBase
         return await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
     }
 
-    private async Task<SocialAccount?> GetInstagramAccountAsync()
+    private async Task<SocialAccount?> GetInstagramAccountAsync(int clientId = 0, int accountId = 0)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return null;
         return await _db.SocialAccounts
             .FirstOrDefaultAsync(a =>
-                a.UserId == user.Id &&
-                a.Platform == "instagram" &&
+                a.Client.UserId == user.Id &&
+                (clientId  == 0 || a.ClientId == clientId) &&
+                (accountId == 0 || a.Id       == accountId) &&
+                a.PlatformId == 1 &&
                 a.IsConnected &&
                 !string.IsNullOrEmpty(a.AccessToken));
     }
@@ -88,9 +90,9 @@ public class SocialController : ControllerBase
     // ── GET /api/social/instagram/overview ────────────────────────────────────
 
     [HttpGet("instagram/overview")]
-    public async Task<IActionResult> GetOverview()
+    public async Task<IActionResult> GetOverview([FromQuery] int clientId = 0, [FromQuery] int accountId = 0)
     {
-        var ig = await GetInstagramAccountAsync();
+        var ig = await GetInstagramAccountAsync(clientId, accountId);
         if (ig == null) return NotFound(new { message = "Instagram account not connected" });
         var data = await GetGraph(
             $"{ig.AccountId}?fields=followers_count,media_count,profile_picture_url,name,biography,website",
@@ -203,18 +205,18 @@ public class SocialController : ControllerBase
     // ── GET /api/social/instagram/summary ─────────────────────────────────────
 
     [HttpGet("instagram/summary")]
-    public async Task<IActionResult> GetSummary()
+    public async Task<IActionResult> GetSummary([FromQuery] int clientId = 0, [FromQuery] int accountId = 0)
     {
-        var ig = await GetInstagramAccountAsync();
+        var ig = await GetInstagramAccountAsync(clientId, accountId);
         if (ig == null)
             return NotFound(new { message = "Instagram account not connected. Please connect your account in the Accounts section." });
 
-        var accountId = ig.AccountId!;
+        var igPageId    = ig.AccountId!;
         var accessToken = ig.AccessToken;
 
-        var overviewTask = GetGraph($"{accountId}?fields=followers_count,media_count,name,profile_picture_url", accessToken);
-        var insightsTask = GetGraph($"{accountId}/insights?metric=reach,follower_count&period=day&since={DateTimeOffset.UtcNow.AddDays(-30).ToUnixTimeSeconds()}&until={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}", accessToken);
-        var mediaTask = GetGraph($"{accountId}/media?fields=id,caption,media_type,timestamp,like_count,comments_count,permalink,media_url,thumbnail_url&limit=6", accessToken);
+        var overviewTask = GetGraph($"{igPageId}?fields=followers_count,media_count,name,profile_picture_url", accessToken);
+        var insightsTask = GetGraph($"{igPageId}/insights?metric=reach,follower_count&period=day&since={DateTimeOffset.UtcNow.AddDays(-30).ToUnixTimeSeconds()}&until={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}", accessToken);
+        var mediaTask = GetGraph($"{igPageId}/media?fields=id,caption,media_type,timestamp,like_count,comments_count,permalink,media_url,thumbnail_url&limit=6", accessToken);
 
         await Task.WhenAll(overviewTask, insightsTask, mediaTask);
 
@@ -300,14 +302,16 @@ public class SocialController : ControllerBase
 
     // ── Facebook helpers ──────────────────────────────────────────────────────
 
-    private async Task<SocialAccount?> GetFacebookAccountAsync()
+    private async Task<SocialAccount?> GetFacebookAccountAsync(int clientId = 0, int accountId = 0)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return null;
         return await _db.SocialAccounts
             .FirstOrDefaultAsync(a =>
-                a.UserId == user.Id &&
-                a.Platform == "facebook" &&
+                a.Client.UserId == user.Id &&
+                (clientId  == 0 || a.ClientId == clientId) &&
+                (accountId == 0 || a.Id       == accountId) &&
+                a.PlatformId == 2 &&
                 a.IsConnected &&
                 !string.IsNullOrEmpty(a.AccessToken));
     }
@@ -315,9 +319,9 @@ public class SocialController : ControllerBase
     // ── GET /api/social/facebook/summary ──────────────────────────────────────
 
     [HttpGet("facebook/summary")]
-    public async Task<IActionResult> GetFacebookSummary()
+    public async Task<IActionResult> GetFacebookSummary([FromQuery] int clientId = 0, [FromQuery] int accountId = 0)
     {
-        var fb = await GetFacebookAccountAsync();
+        var fb = await GetFacebookAccountAsync(clientId, accountId);
         if (fb == null)
             return NotFound(new { message = "Facebook account not connected. Please connect your Page in the Accounts section." });
 
@@ -403,7 +407,7 @@ public class SocialController : ControllerBase
 
     [HttpGet("tiktok/auth")]
     [AllowAnonymous]
-    public IActionResult TikTokAuth([FromQuery] string token = "")
+    public IActionResult TikTokAuth([FromQuery] string token = "", [FromQuery] int clientId = 0)
     {
         var clientKey = _config["TikTok:ClientKey"];
         var redirectUri = _config["TikTok:RedirectUri"];
@@ -425,7 +429,7 @@ public class SocialController : ControllerBase
 
         // Encode email + verifier in state (base64)
         var stateData = Convert.ToBase64String(
-            Encoding.UTF8.GetBytes($"{email}||{codeVerifier}")
+            Encoding.UTF8.GetBytes($"{email}||{codeVerifier}||{clientId}")
         ).Replace("+", "-").Replace("/", "_").Replace("=", "");
 
         var url = "https://www.tiktok.com/v2/auth/authorize/" +
@@ -450,9 +454,10 @@ public class SocialController : ControllerBase
         var clientSecret = _config["TikTok:ClientSecret"];
         var redirectUri = _config["TikTok:RedirectUri"];
 
-        // ── Decode email + verifier from state ────────────────────────────
+        // ── Decode email + verifier + clientId from state ────────────────
         string email = "";
         string codeVerifier = "";
+        int tikTokClientId = 0;
         try
         {
             // TikTok may URL-encode the state — decode it first
@@ -465,6 +470,7 @@ public class SocialController : ControllerBase
             var parts = decoded.Split("||");
             email = parts.Length > 0 ? parts[0] : "";
             codeVerifier = parts.Length > 1 ? parts[1] : "";
+            if (parts.Length > 2) int.TryParse(parts[2], out tikTokClientId);
         }
         catch (Exception ex)
         {
@@ -525,7 +531,7 @@ public class SocialController : ControllerBase
 
         // ── Save to DB ────────────────────────────────────────────────────
         var existing = await _db.SocialAccounts
-            .FirstOrDefaultAsync(a => a.UserId == user.Id && a.Platform == "tiktok");
+            .FirstOrDefaultAsync(a => a.ClientId == tikTokClientId && a.PlatformId == 4);
 
         if (existing != null)
         {
@@ -541,8 +547,8 @@ public class SocialController : ControllerBase
         {
             _db.SocialAccounts.Add(new SocialAccount
             {
-                UserId = user.Id,
-                Platform = "tiktok",
+                ClientId = tikTokClientId,
+                PlatformId = 4,
                 AccessToken = accessToken,
                 RefreshToken = refreshToken,
                 AccountId = openId,
@@ -560,13 +566,18 @@ public class SocialController : ControllerBase
     // ── GET /api/social/tiktok/summary ───────────────────────────────────────
 
     [HttpGet("tiktok/summary")]
-    public async Task<IActionResult> GetTikTokSummary()
+    public async Task<IActionResult> GetTikTokSummary([FromQuery] int clientId = 0, [FromQuery] int accountId = 0)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
 
         var account = await _db.SocialAccounts
-            .FirstOrDefaultAsync(a => a.UserId == user.Id && a.Platform == "tiktok" && a.IsConnected);
+            .FirstOrDefaultAsync(a =>
+                a.Client.UserId == user.Id &&
+                (clientId  == 0 || a.ClientId == clientId) &&
+                (accountId == 0 || a.Id       == accountId) &&
+                a.PlatformId == 4 &&
+                a.IsConnected);
         if (account == null)
             return NotFound(new { message = "TikTok account not connected" });
 
@@ -664,7 +675,8 @@ public class SocialController : ControllerBase
             .Where(s => s.IsConnected)
             .Select(s => new {
                 s.Id,
-                s.Platform,
+                s.PlatformId,
+                Platform = s.Platform.Name,
                 s.AccessToken,
                 s.RefreshToken,
                 s.AccountId,
@@ -685,6 +697,113 @@ public class SocialController : ControllerBase
         account.ConnectedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(new { message = "Token updated" });
+    }
+
+    // ── POST /api/social/tokens/refresh-all — called by n8n on schedule ────────
+
+    [HttpPost("tokens/refresh-all")]
+    [AllowAnonymous]
+    public async Task<IActionResult> RefreshAllTokens()
+    {
+        var accounts = await _db.SocialAccounts
+            .Where(a => a.IsConnected)
+            .ToListAsync();
+
+        var refreshed = new List<object>();
+        var failed    = new List<object>();
+
+        // ── Facebook / Instagram (platformId 1 & 2): extend long-lived token ──
+        var fbAppId     = _config["Facebook:AppId"];
+        var fbAppSecret = _config["Facebook:AppSecret"];
+        var fbAccounts  = accounts.Where(a => a.PlatformId == 1 || a.PlatformId == 2).ToList();
+
+        if (!string.IsNullOrEmpty(fbAppId) && !string.IsNullOrEmpty(fbAppSecret))
+        {
+            foreach (var acc in fbAccounts)
+            {
+                if (string.IsNullOrEmpty(acc.AccessToken)) continue;
+                try
+                {
+                    var url = $"https://graph.facebook.com/v20.0/oauth/access_token" +
+                              $"?grant_type=fb_exchange_token" +
+                              $"&client_id={fbAppId}" +
+                              $"&client_secret={fbAppSecret}" +
+                              $"&fb_exchange_token={acc.AccessToken}";
+
+                    var res = await _http.GetAsync(url);
+                    var raw = await res.Content.ReadAsStringAsync();
+                    var json = JsonDocument.Parse(raw).RootElement;
+
+                    if (json.TryGetProperty("access_token", out var newToken))
+                    {
+                        acc.AccessToken  = newToken.GetString()!;
+                        acc.ConnectedAt  = DateTime.UtcNow;
+                        refreshed.Add(new { acc.Id, acc.Username, platform = acc.PlatformId == 1 ? "instagram" : "facebook" });
+                    }
+                    else
+                    {
+                        var err = json.TryGetProperty("error", out var e) ? e.ToString() : raw;
+                        failed.Add(new { acc.Id, acc.Username, error = err });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failed.Add(new { acc.Id, acc.Username, error = ex.Message });
+                }
+            }
+        }
+
+        // ── TikTok (platformId 4): use refresh_token to get new access_token ──
+        var ttKey     = _config["TikTok:ClientKey"];
+        var ttSecret  = _config["TikTok:ClientSecret"];
+        var ttAccounts = accounts.Where(a => a.PlatformId == 4 && !string.IsNullOrEmpty(a.RefreshToken)).ToList();
+
+        foreach (var acc in ttAccounts)
+        {
+            try
+            {
+                var body = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["client_key"]     = ttKey!,
+                    ["client_secret"]  = ttSecret!,
+                    ["grant_type"]     = "refresh_token",
+                    ["refresh_token"]  = acc.RefreshToken!,
+                });
+
+                var res = await _http.PostAsync("https://open.tiktokapis.com/v2/oauth/token/", body);
+                var raw = await res.Content.ReadAsStringAsync();
+                var json = JsonDocument.Parse(raw).RootElement;
+
+                if (json.TryGetProperty("access_token", out var newAt))
+                {
+                    acc.AccessToken  = newAt.GetString()!;
+                    if (json.TryGetProperty("refresh_token", out var newRt))
+                        acc.RefreshToken = newRt.GetString();
+                    acc.ConnectedAt = DateTime.UtcNow;
+                    refreshed.Add(new { acc.Id, acc.Username, platform = "tiktok" });
+                }
+                else
+                {
+                    var err = json.TryGetProperty("error", out var e) ? e.ToString() : raw;
+                    failed.Add(new { acc.Id, acc.Username, error = err });
+                }
+            }
+            catch (Exception ex)
+            {
+                failed.Add(new { acc.Id, acc.Username, error = ex.Message });
+            }
+        }
+
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            refreshedCount = refreshed.Count,
+            failedCount    = failed.Count,
+            refreshed,
+            failed,
+            runAt = DateTime.UtcNow,
+        });
     }
 
     // ── PKCE Helpers ──────────────────────────────────────────────────────────

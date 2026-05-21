@@ -72,16 +72,28 @@ public class PostsController : ControllerBase
         };
     }
 
-    // ─── GET /api/posts ───────────────────────────────────────────────────────
+    // ─── GET /api/posts?clientId=X ────────────────────────────────────────────
 
     [HttpGet]
-    public async Task<IActionResult> GetPosts()
+    public async Task<IActionResult> GetPosts([FromQuery] int clientId = 0)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
 
-        var posts = await _db.Posts
-            .Where(p => p.UserId == user.Id)
+        IQueryable<Post> query = _db.Posts;
+
+        if (clientId > 0)
+        {
+            var clientBelongs = await _db.Clients.AnyAsync(c => c.Id == clientId && c.UserId == user.Id);
+            if (!clientBelongs) return Forbid();
+            query = query.Where(p => p.ClientId == clientId);
+        }
+        else
+        {
+            query = query.Where(p => p.UserId == user.Id);
+        }
+
+        var posts = await query
             .Include(p => p.Topic)
             .Include(p => p.Captions)
             .Include(p => p.Media)
@@ -156,6 +168,8 @@ public class PostsController : ControllerBase
         if (resolvedUserId == 0) return BadRequest(new { message = "User not found" });
 
         int resolvedTopicId = dto.TopicId;
+        int resolvedClientId = 0;
+
         if (resolvedTopicId == 0 && !string.IsNullOrWhiteSpace(dto.TopicName))
         {
             var topic = await _db.Topics
@@ -167,7 +181,14 @@ public class PostsController : ControllerBase
                 await _db.SaveChangesAsync();
             }
             resolvedTopicId = topic.Id;
+            resolvedClientId = topic.ClientId;
         }
+        else if (resolvedTopicId > 0)
+        {
+            var topic = await _db.Topics.FirstOrDefaultAsync(t => t.Id == resolvedTopicId);
+            resolvedClientId = topic?.ClientId ?? 0;
+        }
+
         if (resolvedTopicId == 0) return BadRequest(new { message = "topicId or topicName is required" });
 
         var requestedStatus = ParseStatusOrDefault(dto.Status, PostStatus.Draft);
@@ -190,6 +211,7 @@ public class PostsController : ControllerBase
         var post = new Post
         {
             TopicId = resolvedTopicId,
+            ClientId = resolvedClientId,
             UserId = resolvedUserId,
             Status = requestedStatus,
             ScheduledAt = scheduledAt,

@@ -23,6 +23,7 @@ publish/
 
 # User secrets
 secrets.json
+appsettings.Development.json
 
 # Logs
 *.log

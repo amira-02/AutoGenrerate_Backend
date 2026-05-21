@@ -20,5 +20,5 @@ public class User
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<Post> Posts { get; set; } = new List<Post>();
-    public ICollection<SocialAccount> SocialAccounts { get; set; } = new List<SocialAccount>();
+    public ICollection<Client> Clients { get; set; } = new List<Client>();
 }

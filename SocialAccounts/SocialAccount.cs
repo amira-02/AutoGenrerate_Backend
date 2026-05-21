@@ -3,8 +3,8 @@
 public class SocialAccount
 {
     public int Id { get; set; }
-    public int UserId { get; set; }
-    public string Platform { get; set; } = "";
+    public int ClientId { get; set; }
+    public int PlatformId { get; set; }
     public string AccessToken { get; set; } = "";
     public string? RefreshToken { get; set; }
     public string? AccountId { get; set; }
@@ -14,5 +14,6 @@ public class SocialAccount
     public bool IsConnected { get; set; } = true;
     public DateTime ConnectedAt { get; set; } = DateTime.UtcNow;
 
-    public User User { get; set; } = null!;
+    public Client Client { get; set; } = null!;
+    public Platform Platform { get; set; } = null!;
 }
