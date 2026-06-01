@@ -19,7 +19,7 @@ public class SheetSyncService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IHttpClientFactory   _http;
     private readonly ILogger<SheetSyncService> _log;
-    private static readonly TimeSpan POLL_INTERVAL = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan POLL_INTERVAL = TimeSpan.FromMinutes(2);
 
     public SheetSyncService(
         IServiceScopeFactory scopeFactory,
@@ -84,9 +84,9 @@ public class SheetSyncService : BackgroundService
         if (rows.Count == 0)
             return new SyncResult { Error = "Sheet is empty or could not be parsed" };
 
-        var defaultUserId = await db.Users.Select(u => u.Id).FirstOrDefaultAsync(ct);
-        if (defaultUserId == 0)
-            return new SyncResult { Error = "No users found in database" };
+        var ownerUserId = client.UserId;
+        if (ownerUserId == 0)
+            return new SyncResult { Error = "Client has no owner" };
 
         // Load all existing SheetRows for this client
         var existing = await db.SheetRows
@@ -138,7 +138,7 @@ public class SheetSyncService : BackgroundService
                     // Caption changed → update the post
                     if (tracked.PostId.HasValue)
                     {
-                        await UpdatePostAsync(db, tracked.PostId.Value, row, client.Id, defaultUserId, ct);
+                        await UpdatePostAsync(db, tracked.PostId.Value, row, client.Id, ownerUserId, ct);
                         result.Updated++;
 
                         db.Notifications.Add(new Notification
@@ -167,7 +167,7 @@ public class SheetSyncService : BackgroundService
 
                 if (!string.IsNullOrWhiteSpace(caption))
                 {
-                    var post = await CreatePostAsync(db, row, client.Id, defaultUserId, key, ct);
+                    var post = await CreatePostAsync(db, row, client.Id, ownerUserId, key, ct);
                     sheetRow.PostId = post.Id;
                     result.Created++;
 

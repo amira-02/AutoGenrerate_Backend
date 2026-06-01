@@ -66,11 +66,11 @@ public class TopicsController : ControllerBase
         if (user == null) return Unauthorized();
 
         var topic = await _db.Topics
-            .Where(t => t.Id == id && t.UserId == user.Id)
+            .Where(t => t.Id == id && (t.UserId == user.Id || t.Client!.UserId == user.Id))
             .Include(t => t.Posts)
                 .ThenInclude(p => p.Captions)
             .Include(t => t.Posts)
-                .ThenInclude(p => p.Media)   // ✅ was p.Images
+                .ThenInclude(p => p.Media)
             .FirstOrDefaultAsync();
 
         if (topic == null) return NotFound();
@@ -145,7 +145,9 @@ public class TopicsController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
 
-        var topic = await _db.Topics.FirstOrDefaultAsync(t => t.Id == id && t.UserId == user.Id);
+        var topic = await _db.Topics
+            .Include(t => t.Client)
+            .FirstOrDefaultAsync(t => t.Id == id && (t.UserId == user.Id || t.Client!.UserId == user.Id));
         if (topic == null) return NotFound();
 
         _db.Topics.Remove(topic);

@@ -24,8 +24,9 @@ public class AppDbContext : DbContext
 
 
     public DbSet<PostImage> PostImages { get; set; }
-    public DbSet<SheetRow>    SheetRows    { get; set; }
-    public DbSet<TrelloBrief> TrelloBriefs { get; set; }
+    public DbSet<SheetRow>       SheetRows       { get; set; }
+    public DbSet<TrelloBrief>    TrelloBriefs    { get; set; }
+    public DbSet<PostAssignment> PostAssignments { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -130,6 +131,31 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TrelloBrief>()
             .HasIndex(b => b.CardId)
             .IsUnique();
+
+        modelBuilder.Entity<PostAssignment>()
+            .HasOne(a => a.AssignedTo)
+            .WithMany()
+            .HasForeignKey(a => a.AssignedToUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PostAssignment>()
+            .HasOne(a => a.AssignedBy)
+            .WithMany()
+            .HasForeignKey(a => a.AssignedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PostAssignment>()
+            .HasOne(a => a.Client)
+            .WithMany()
+            .HasForeignKey(a => a.ClientId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PostAssignment>()
+            .HasOne(a => a.Parent)
+            .WithMany()
+            .HasForeignKey(a => a.ParentAssignmentId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
 
         // Seed platforms
         modelBuilder.Entity<Platform>().HasData(
