@@ -15,12 +15,14 @@ public class TrelloBriefController : ControllerBase
     private readonly AppDbContext    _db;
     private readonly IConfiguration _config;
     private readonly IHttpClientFactory _http;
+    private readonly SheetSyncService   _sync;
 
-    public TrelloBriefController(AppDbContext db, IConfiguration config, IHttpClientFactory http)
+    public TrelloBriefController(AppDbContext db, IConfiguration config, IHttpClientFactory http, SheetSyncService sync)
     {
         _db     = db;
         _config = config;
         _http   = http;
+        _sync   = sync;
     }
 
     // GET /api/trello/briefs?clientId=X  — list assigned briefs for a client
@@ -51,13 +53,28 @@ public class TrelloBriefController : ControllerBase
 
         if (brief == null) return NotFound();
 
-        // Sheet rows with post + caption data
+        // Auto-sync if sheet data is stale (first call or last sync > 25 seconds ago)
+        if (!string.IsNullOrEmpty(brief.Client?.SheetUrl))
+        {
+            var age = brief.Client.SheetLastSyncAt.HasValue
+                ? DateTime.UtcNow - brief.Client.SheetLastSyncAt.Value
+                : TimeSpan.MaxValue;
+
+            if (age > TimeSpan.FromSeconds(25))
+                await _sync.SyncClientAsync(brief.Client.Id, ct);
+        }
+
+        // Sheet rows with post + caption data — sort numerically by RowKey
         var rows = await _db.SheetRows
             .Where(sr => sr.ClientId == brief.ClientId)
             .Include(sr => sr.Post)
                 .ThenInclude(p => p!.Captions)
-            .OrderBy(sr => sr.RowKey)
             .ToListAsync(ct);
+
+        rows = rows
+            .OrderBy(sr => int.TryParse(sr.RowKey, out var n) ? n : int.MaxValue)
+            .ThenBy(sr => sr.RowKey)
+            .ToList();
 
         var rowDtos = rows.Select(r =>
         {

@@ -19,7 +19,7 @@ public class SheetSyncService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IHttpClientFactory   _http;
     private readonly ILogger<SheetSyncService> _log;
-    private static readonly TimeSpan POLL_INTERVAL = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan POLL_INTERVAL = TimeSpan.FromSeconds(30);
 
     public SheetSyncService(
         IServiceScopeFactory scopeFactory,
@@ -43,6 +43,33 @@ public class SheetSyncService : BackgroundService
 
             await Task.Delay(POLL_INTERVAL, ct);
         }
+    }
+
+    // Called by debug endpoint — fetch CSV and return what the parser sees, no DB writes
+    public async Task<object> PreviewAsync(int clientId, CancellationToken ct = default)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var client = await db.Clients.FirstOrDefaultAsync(c => c.Id == clientId, ct);
+        if (client == null || string.IsNullOrEmpty(client.SheetUrl))
+            return new { error = "Client not found or no sheet URL" };
+
+        var csv = await FetchCsvAsync(client.SheetUrl, ct);
+        if (csv == null) return new { error = "Could not fetch CSV" };
+
+        var rows = ParseSheet(csv);
+        return new
+        {
+            csvBytes   = csv.Length,
+            csvLines   = csv.Split('\n').Length,
+            rowsParsed = rows.Count,
+            rows       = rows.Select(r => new
+            {
+                r.RowKey, r.Caption, r.Date, r.Time, r.Platforms,
+                brief = r.Brief?.Brief,
+            }).ToList(),
+        };
     }
 
     // Called by the background loop AND by the manual endpoint
@@ -81,6 +108,8 @@ public class SheetSyncService : BackgroundService
             return new SyncResult { Error = "Could not fetch sheet (check public sharing)" };
 
         var rows = ParseSheet(csv);
+        _log.LogInformation("Sheet sync client {ClientId}: parser found {N} rows from CSV ({Bytes} bytes)",
+            client.Id, rows.Count, csv.Length);
         if (rows.Count == 0)
             return new SyncResult { Error = "Sheet is empty or could not be parsed" };
 
@@ -135,15 +164,32 @@ public class SheetSyncService : BackgroundService
                 }
                 else
                 {
-                    // Caption changed → update the post
                     if (tracked.PostId.HasValue)
                     {
+                        // Caption changed → update the existing post
                         await UpdatePostAsync(db, tracked.PostId.Value, row, client.Id, ownerUserId, ct);
                         result.Updated++;
 
                         db.Notifications.Add(new Notification
                         {
                             Title     = $"Post mis à jour : {client.Name}",
+                            Message   = BuildSyncNotifMessage(key, row),
+                            Type      = "sheet_sync",
+                            ReferenceId = client.Id.ToString(),
+                            IsRead    = false,
+                            CreatedAt = DateTime.UtcNow,
+                        });
+                    }
+                    else if (!string.IsNullOrWhiteSpace(caption))
+                    {
+                        // Row was created without a caption; caption now added → create post
+                        var post = await CreatePostAsync(db, row, client.Id, ownerUserId, key, ct);
+                        tracked.PostId = post.Id;
+                        result.Created++;
+
+                        db.Notifications.Add(new Notification
+                        {
+                            Title     = $"Nouveau post : {client.Name}",
                             Message   = BuildSyncNotifMessage(key, row),
                             Type      = "sheet_sync",
                             ReferenceId = client.Id.ToString(),
@@ -385,7 +431,7 @@ public class SheetSyncService : BackgroundService
         var headers = ParseCsvLine(lines[headerIdx]).Select(Norm).ToArray();
 
         // Column indices
-        int idxNo      = FindCol(headers, "n post", "n°", "numero", "num");
+        int idxNo      = FindCol(headers, "n post", "numero post", "numero", "num post");
         int idxBrief   = FindCol(headers, "details", "brief", "creatif", "crea");
         int idxCharte  = FindCol(headers, "charte");
         int idxFormat  = FindCol(headers, "format");
@@ -517,12 +563,38 @@ public class SheetSyncService : BackgroundService
         return result.Count > 0 ? result : new List<string> { "instagram" };
     }
 
+    private static readonly Dictionary<string, string> _frMonths = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "janvier", "January" }, { "janv", "January" },
+        { "février", "February" }, { "fevrier", "February" }, { "fév", "February" }, { "fev", "February" },
+        { "mars", "March" },
+        { "avril", "April" }, { "avr", "April" },
+        { "mai", "May" },
+        { "juin", "June" },
+        { "juillet", "July" }, { "juil", "July" },
+        { "août", "August" }, { "aout", "August" }, { "aoû", "August" },
+        { "septembre", "September" }, { "sept", "September" },
+        { "octobre", "October" }, { "oct", "October" },
+        { "novembre", "November" }, { "nov", "November" },
+        { "décembre", "December" }, { "decembre", "December" }, { "déc", "December" }, { "dec", "December" },
+    };
+
     private static DateTime? ParseScheduledAt(string date, string time)
     {
         if (string.IsNullOrWhiteSpace(date)) return null;
         var combined = string.IsNullOrWhiteSpace(time) ? date : $"{date} {time}";
+
         if (DateTime.TryParse(combined, out var dt))
             return DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+
+        // Try translating French month names and retry
+        var translated = combined;
+        foreach (var (fr, en) in _frMonths)
+            translated = Regex.Replace(translated, $@"\b{Regex.Escape(fr)}\b", en, RegexOptions.IgnoreCase);
+
+        if (translated != combined && DateTime.TryParse(translated, out var dt2))
+            return DateTime.SpecifyKind(dt2, DateTimeKind.Utc);
+
         return null;
     }
 
@@ -551,9 +623,11 @@ public class SheetSyncService : BackgroundService
 
     private static int FindCol(string[] headers, params string[] candidates)
     {
+        // Normalise candidates the same way headers were normalised before comparing
+        var normed = candidates.Select(Norm).ToArray();
         for (int i = 0; i < headers.Length; i++)
-            foreach (var c in candidates)
-                if (headers[i].Contains(c)) return i;
+            foreach (var c in normed)
+                if (!string.IsNullOrEmpty(c) && headers[i].Contains(c)) return i;
         return -1;
     }
 

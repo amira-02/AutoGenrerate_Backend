@@ -94,27 +94,42 @@ public class ImageController : ControllerBase
     {
         var styleMap = new Dictionary<string, string>
         {
-            ["realistic"] = "photorealistic, high detail, sharp focus",
-            ["cartoon"] = "cartoon style, vibrant colors",
-            ["watercolor"] = "watercolor painting, soft brush strokes",
-            ["cinematic"] = "cinematic lighting, dramatic film look",
-            ["minimalist"] = "minimalist, clean composition",
+            ["realistic"]    = "photorealistic, high detail, sharp focus",
+            ["cartoon"]      = "cartoon style, vibrant colors",
+            ["watercolor"]   = "watercolor painting, soft brush strokes",
+            ["cinematic"]    = "cinematic lighting, dramatic film look",
+            ["minimalist"]   = "minimalist, clean composition",
             ["oil-painting"] = "oil painting style, textured canvas",
         };
-        var styleHint = styleMap.GetValueOrDefault(style ?? "realistic");
+        var styleHint  = styleMap.GetValueOrDefault(style ?? "realistic", "photorealistic, high detail");
         var fullPrompt = $"{prompt}. Style: {styleHint}.";
 
-        var encodedPrompt = Uri.EscapeDataString(fullPrompt);
-        var pollinationsUrl = $"https://image.pollinations.ai/prompt/{encodedPrompt}?width=1024&height=1024&nologo=true";
+        var hfToken = _config["HuggingFace:ApiKey"];
+        if (string.IsNullOrEmpty(hfToken))
+            throw new Exception("HuggingFace:ApiKey not configured");
 
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(3) };
-        var bytes = await http.GetByteArrayAsync(pollinationsUrl);
+        http.DefaultRequestHeaders.Add("Authorization", $"Bearer {hfToken}");
 
+        var body    = System.Text.Json.JsonSerializer.Serialize(new { inputs = fullPrompt });
+        var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+
+        var response = await http.PostAsync(
+            "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell",
+            content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadAsStringAsync();
+            throw new Exception($"HuggingFace API error {(int)response.StatusCode}: {err}");
+        }
+
+        var bytes = await response.Content.ReadAsByteArrayAsync();
         if (bytes.Length == 0)
-            throw new Exception("Image vide retournée par Pollinations");
+            throw new Exception("Empty image returned by HuggingFace");
 
         return await UploadBytesAsync(bytes, "generated.png");
-    }   
+    }
 
 
     // ── Helper: get or create PostImage for a post ────────────────────────────

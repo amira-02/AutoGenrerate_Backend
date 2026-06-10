@@ -34,12 +34,17 @@ public class SheetController : ControllerBase
         if (result.Error != null)
             return BadRequest(new { message = result.Error });
 
+        // Re-read client to get updated lastSyncAt and current row count
+        await _db.Entry(client).ReloadAsync(ct);
+        var trackedRows = await _db.SheetRows.CountAsync(sr => sr.ClientId == clientId, ct);
+
         return Ok(new
         {
             message     = "Sync complete",
             created     = result.Created,
             updated     = result.Updated,
             cancelled   = result.Cancelled,
+            trackedRows,
             lastSyncAt  = client.SheetLastSyncAt,
         });
     }
@@ -55,6 +60,14 @@ public class SheetController : ControllerBase
         await _db.SaveChangesAsync(ct);
 
         return Ok(new { message = "Sheet URL updated", sheetUrl = client.SheetUrl });
+    }
+
+    // GET /api/sheets/preview/{clientId}  — shows what the parser sees without writing to DB
+    [HttpGet("preview/{clientId:int}")]
+    public async Task<IActionResult> Preview(int clientId, CancellationToken ct)
+    {
+        var result = await _sync.PreviewAsync(clientId, ct);
+        return Ok(result);
     }
 
     // GET /api/sheets/status/{clientId}
